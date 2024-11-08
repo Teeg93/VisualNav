@@ -3,8 +3,10 @@ import random
 import time
 import cv2
 import sys
+import os
 import json
 from threading import Thread
+import argparse
 
 import tkinter as tk
 from tkinter import ttk
@@ -16,6 +18,28 @@ max_temp = tk.IntVar()
 
 play_video = False
 
+from ..MetadataHandler import MetadataHandlerCSV
+
+# Parse command line arguments
+parser = argparse.ArgumentParser(description="Playback from an image  directory")
+
+parser.add_argument('-d', '--directory', type=str, required=True, help="Directory which contains the video file")
+
+
+args = parser.parse_args()
+
+
+thermal_directory = args.directory
+files = os.listdir(thermal_directory)
+image_files = [x for x in files if x.endswith('.png') or x.endswith('.jpg') or x.endswith('.jpeg')]
+if image_files is None or len(image_files) == 0:
+    print(f"Could not find any files in directory <{thermal_directory}>")
+    sys.exit(1)
+
+metadata_file = os.path.join(thermal_directory, "metadata.csv")
+if not os.path.exists(metadata_file):
+    print(f"No metadata available - could not locate <metadata.csv> in <{thermal_directory}>")
+    sys.exit(1)
 
 def downsample(frame, min_value, max_value):
     range = max_value - min_value
@@ -171,8 +195,6 @@ def main():
     create_gui_button(root, "Play", play_callback,  row_idx); row_idx += 1
     create_gui_button(root, "Pause", pause_callback,    row_idx); row_idx += 1
 
-    #create_gui_item(root, "Min Temp", 0, min_temp, row_idx); row_idx += 1
-    #create_gui_item(root, "Max Temp", 50, max_temp, row_idx); row_idx += 1
     create_slider(root, "Min Temp", -30, 70, 0, min_temp, row_idx); row_idx += 1
     create_slider(root, "Max Temp", -30, 70, 50, max_temp, row_idx); row_idx += 1
 
