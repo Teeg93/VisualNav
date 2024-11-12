@@ -1,5 +1,6 @@
 import pandas
 import json
+import numpy as np
 
 class MavlinkMetadata:
     def __init__(self, filename, frame, timestamp, lat, lon, alt, airspeed, groundspeed, throttle, roll, pitch, yaw, rollspeed, pitchspeed, yawspeed, exposure_start, exposure_end, attitude_extended, groundcourse=None):
@@ -22,6 +23,29 @@ class MavlinkMetadata:
         self.exposure_end = exposure_end
         self.attitude_extended = attitude_extended
         self.groundcourse = groundcourse
+
+    def as_dict(self):
+        return {
+            "filename": self.filename,
+            "frame": self.frame,
+            "timestamp": self.timestamp,
+            "lat": self.lat,
+            "lon": self.lon,
+            "alt": self.alt,
+            "airspeed": self.airspeed,
+            "groundspeed": self.groundspeed,
+            "throttle": self.throttle,
+            "roll": self.roll,
+            "pitch": self.pitch,
+            "yaw": self.yaw,
+            "rollspeed": self.rollspeed,
+            "pitchspeed": self.pitchspeed,
+            "yawspeed": self.yawspeed,
+            "exposure_start": self.exposure_start,
+            "exposure_end": self.exposure_end,
+            "attitude_extended": self.attitude_extended,
+            "groundcourse": self.groundcourse
+        }
 
     def __str__(self):
         string = ""

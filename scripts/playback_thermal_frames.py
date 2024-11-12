@@ -5,8 +5,10 @@ import cv2
 import sys
 import os
 import json
+import numpy as np
 from threading import Thread
 import argparse
+import datetime
 
 import tkinter as tk
 from tkinter import ttk
@@ -16,6 +18,7 @@ root.title('Playback')
 min_temp = tk.IntVar()
 max_temp = tk.IntVar()
 frame_index = tk.IntVar()
+image_scale = tk.IntVar()
 
 play_video = False
 
@@ -191,6 +194,46 @@ def play_callback():
     play_video = True
 
 
+def draw_metadata(frame, metadata):
+    row_idx = 0
+
+    x_offset = 1
+    y_offset = 10
+
+    font = cv2.FONT_HERSHEY_SIMPLEX
+    font_scale = 0.3
+    color = 255
+    thickness = 1
+    org = (x_offset, row_idx*10 + y_offset)
+
+    time_string = datetime.datetime.fromtimestamp(metadata.timestamp).strftime('%Y-%m-%d %H:%M:%S')
+
+    frame = cv2.putText(frame, f"Date: {time_string}", org, font, font_scale, color, thickness, cv2.LINE_AA)
+    row_idx += 1
+
+    accepted_keys = ["frame", "lat", "lon", "alt", "airspeed", "groundspeed", "groundcourse"]
+    dat = metadata.as_dict()
+    for key, val in dat.items():
+        if val is not None and val and (key == "lat" or key == "lon"):
+            val = f"{val:.5f}"
+        if val is not None and val and (key == "groundspeed" or key == "airspeed" or key == "groundcourse"):
+            val = f"{val:.1f}"
+        if val is not None and val and (key == "alt"):
+            val = f"{val:.0f}"
+        
+
+
+        if not key in accepted_keys:
+            continue
+        org = (x_offset, row_idx*10 + y_offset)
+        frame = cv2.putText(frame, f"{key}: {val}", org, font, font_scale, color, thickness, cv2.LINE_AA)
+        row_idx += 1
+
+
+    return frame
+
+
+
 def video_loop():
     global play_video
     global frame_index
@@ -199,45 +242,96 @@ def video_loop():
     previous_timestamp = None
     previous_iteration_time = time.time()
 
+    previous_frame_index = 0
+
+    eof_flag = False
+
     while True:
         _min_temp = min_temp.get()
         _max_temp = max_temp.get()
 
         thermal_window_name = "Thermal"
-        window = cv2.namedWindow(thermal_window_name, cv2.WINDOW_NORMAL)
+        #window = cv2.namedWindow(thermal_window_name, cv2.WINDOW_NORMAL)
 
-        if play_video:
-            if frame_index.get() >= len(image_files):
-                print("Reached end of video")
-                play_video = False
+
+        current_frame_index = frame_index.get()
+        if current_frame_index >= (len(image_files)-1) and not eof_flag:
+            print("Reached end of video")
+            eof_flag = True
+
+        if current_frame_index >= (len(image_files) -1):
+            current_frame_index = len(image_files) - 1
+            frame_index.set(len(image_files)-1)
+
+        if current_frame_index < len(image_files) -1:
+            eof_flag = False
+
+        if not (current_frame_index - previous_frame_index == 1):
+            previous_timestamp = None
+        previous_frame_index = current_frame_index
+
+        image_filename = image_files[current_frame_index]
+        metadata = metadata_handler.get_metadata_from_filename(image_filename)
+        timestamp = int(image_filename.split(".")[0]) / 1000
+
+
+        if previous_timestamp is None:
+            dt = 0
+        else:
+            dt = timestamp - previous_timestamp
+
+        previous_timestamp = timestamp
+
+        full_filepath = os.path.join(thermal_directory, image_filename)
+        frame_16bit = cv2.imread(full_filepath, -1)
+
+        frame_8bit = rawToThermalFrame(frame_16bit, _min_temp, _max_temp)
+        frame_8bit = draw_metadata(frame_8bit, metadata)
+
+        _scale = image_scale.get()
+        frame_8bit = cv2.resize(frame_8bit, None, fx=_scale, fy=_scale)
+
+        while time.time() - previous_iteration_time < dt:
+            time.sleep(0.001)
+        previous_iteration_time = time.time()
+        cv2.imshow(thermal_window_name, frame_8bit)
+
+        ret = cv2.waitKey(1)
+
+        if ret == 81: #Left
+            if frame_index.get() <= 0:
+                continue
+            else:
+                frame_index.set(frame_index.get() - 1)
                 continue
 
-            image_filename = image_files[frame_index.get()]
-            metadata = metadata_handler.get_metadata_from_filename(image_filename)
-            timestamp = int(image_filename.split(".")[0]) / 1000
-
-
-            print(metadata)
-            if previous_timestamp is None:
-                dt = 0
+        elif ret == 83: #Right
+            if frame_index.get() >= len(image_files):
+                continue
             else:
-                dt = timestamp - previous_timestamp
+                frame_index.set(frame_index.get() + 1)
+                continue
+        
+        elif ret == 85: #Page Up
+            if frame_index.get() >= len(image_files):
+                continue
+            else:
+                frame_index.set(np.clip(frame_index.get() + 10, 0, len(image_files)-1))
+                continue
 
-            print(dt)
-            previous_timestamp = timestamp
+        elif ret == 86: #Page Down
+            if frame_index.get() <= 0:
+                continue
+            else:
+                frame_index.set(np.clip(frame_index.get() - 10, 0, len(image_files)-1))
+                continue
+        
 
-            full_filepath = os.path.join(thermal_directory, image_filename)
-            frame_16bit = cv2.imread(full_filepath, -1)
+        
+        elif ret == 32: #Spacebar
+            play_video =  ~play_video
 
-            frame_8bit = rawToThermalFrame(frame_16bit, _min_temp, _max_temp)
-
-            while time.time() - previous_iteration_time < dt:
-                time.sleep(0.001)
-            previous_iteration_time = time.time()
-            cv2.imshow(thermal_window_name, frame_8bit)
-            cv2.waitKey(1)
-
-
+        if not eof_flag and play_video:
             frame_index.set(frame_index.get() + 1)
 
 
@@ -250,7 +344,8 @@ def main():
     create_slider(root, "Min Temp", -30, 70, 0, min_temp, row_idx); row_idx += 1
     create_slider(root, "Max Temp", -30, 70, 50, max_temp, row_idx); row_idx += 1
 
-    create_slider(root, "Frame Index", 0, len(image_files), 0, frame_index, row_idx); row_idx += 1
+    create_slider(root, "Frame Index", 0, len(image_files)-1, 0, frame_index, row_idx); row_idx += 1
+    create_slider(root, "Scale", 1, 10, 1, image_scale, row_idx); row_idx += 1
 
 
     t = Thread(target=video_loop)
