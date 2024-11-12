@@ -15,10 +15,13 @@ root.title('Playback')
 
 min_temp = tk.IntVar()
 max_temp = tk.IntVar()
+frame_index = tk.IntVar()
 
 play_video = False
 
-from ..MetadataHandler import MetadataHandlerCSV
+sys.path.append('../src')
+from MetadataHandler import MetadataHandlerCSV
+
 
 # Parse command line arguments
 parser = argparse.ArgumentParser(description="Playback from an image  directory")
@@ -36,10 +39,14 @@ if image_files is None or len(image_files) == 0:
     print(f"Could not find any files in directory <{thermal_directory}>")
     sys.exit(1)
 
-metadata_file = os.path.join(thermal_directory, "metadata.csv")
+image_files = sorted(image_files)
+
+metadata_file = os.path.join(thermal_directory, "mavlink.csv")
 if not os.path.exists(metadata_file):
-    print(f"No metadata available - could not locate <metadata.csv> in <{thermal_directory}>")
+    print(f"No metadata available - could not locate <mavlink.csv> in <{thermal_directory}>")
     sys.exit(1)
+
+metadata_handler = MetadataHandlerCSV(metadata_file)
 
 def downsample(frame, min_value, max_value):
     range = max_value - min_value
@@ -53,6 +60,12 @@ def rawToThermalFrame(rawFrame, min, max):
     :param rawFrame: 16 bit radiometric image
     :return: 8 bit temperature scaled image
     """
+
+    if min >= max:
+        print("Warning: Minimum temperature greater than or equal to max temperature. Setting min less than max")
+        min = max - 1
+        min_temp.set(max_temp.get() -1)
+
     # Get temperature range limits
     _dt = max - min
 
@@ -179,14 +192,53 @@ def play_callback():
 
 
 def video_loop():
+    global play_video
+    global frame_index
+
+
+    previous_timestamp = None
+    previous_iteration_time = time.time()
+
     while True:
-        time.sleep(1)
         _min_temp = min_temp.get()
         _max_temp = max_temp.get()
 
+        thermal_window_name = "Thermal"
+        window = cv2.namedWindow(thermal_window_name, cv2.WINDOW_NORMAL)
+
         if play_video:
-            print(_min_temp)
-            print(_max_temp)
+            if frame_index.get() >= len(image_files):
+                print("Reached end of video")
+                play_video = False
+                continue
+
+            image_filename = image_files[frame_index.get()]
+            metadata = metadata_handler.get_metadata_from_filename(image_filename)
+            timestamp = int(image_filename.split(".")[0]) / 1000
+
+
+            print(metadata)
+            if previous_timestamp is None:
+                dt = 0
+            else:
+                dt = timestamp - previous_timestamp
+
+            print(dt)
+            previous_timestamp = timestamp
+
+            full_filepath = os.path.join(thermal_directory, image_filename)
+            frame_16bit = cv2.imread(full_filepath, -1)
+
+            frame_8bit = rawToThermalFrame(frame_16bit, _min_temp, _max_temp)
+
+            while time.time() - previous_iteration_time < dt:
+                time.sleep(0.001)
+            previous_iteration_time = time.time()
+            cv2.imshow(thermal_window_name, frame_8bit)
+            cv2.waitKey(1)
+
+
+            frame_index.set(frame_index.get() + 1)
 
 
 def main():
@@ -197,6 +249,8 @@ def main():
 
     create_slider(root, "Min Temp", -30, 70, 0, min_temp, row_idx); row_idx += 1
     create_slider(root, "Max Temp", -30, 70, 50, max_temp, row_idx); row_idx += 1
+
+    create_slider(root, "Frame Index", 0, len(image_files), 0, frame_index, row_idx); row_idx += 1
 
 
     t = Thread(target=video_loop)
