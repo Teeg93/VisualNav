@@ -198,7 +198,9 @@ def draw_metadata(frame, metadata):
     thickness = 1
     org = (x_offset, row_idx*10 + y_offset)
 
-    time_string = datetime.datetime.fromtimestamp(metadata.timestamp).strftime('%Y-%m-%d %H:%M:%S')
+    filename = metadata.filename
+    timestamp = float(metadata.filename.split(".")[0])/1000
+    time_string = datetime.datetime.fromtimestamp(timestamp).strftime('%Y-%m-%d %H:%M:%S')
 
     frame = cv2.putText(frame, f"time: {time_string}", org, font, font_scale, color, thickness, cv2.LINE_AA)
     row_idx += 1

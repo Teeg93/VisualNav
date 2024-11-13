@@ -69,8 +69,8 @@ class ThermalFlow:
 
         self.tracks = []
     
-        self.feature_params = dict( maxCorners = 100,
-                                    qualityLevel = 0.03,
+        self.feature_params = dict( maxCorners = 300,
+                                    qualityLevel = 0.3,
                                     minDistance = 7,
                                     blockSize = 7 )
         
