@@ -19,11 +19,13 @@ min_temp = tk.IntVar()
 max_temp = tk.IntVar()
 frame_index = tk.IntVar()
 image_scale = tk.IntVar()
+automatic_bracketing = tk.IntVar()
 
 play_video = False
 
 sys.path.append('../src')
 from MetadataHandler import MetadataHandlerCSV
+from ThermalTools import raw_to_thermal_frame, ThermalFlow, compute_thermal_bracket
 
 
 # Parse command line arguments
@@ -51,31 +53,7 @@ if not os.path.exists(metadata_file):
 
 metadata_handler = MetadataHandlerCSV(metadata_file)
 
-def downsample(frame, min_value, max_value):
-    range = max_value - min_value
-    frame = cv2.convertScaleAbs(frame, alpha=255 / range, beta=(-255 * min_value) / range)
-    return frame
 
-def rawToThermalFrame(rawFrame, min, max):
-    """
-    Use the device configuration to scale the 16-bit image to an 8 bit image, given the min & max temperatures.
-
-    :param rawFrame: 16 bit radiometric image
-    :return: 8 bit temperature scaled image
-    """
-
-    if min >= max:
-        print("Warning: Minimum temperature greater than or equal to max temperature. Setting min less than max")
-        min = max - 1
-        min_temp.set(max_temp.get() -1)
-
-    # Get temperature range limits
-    _dt = max - min
-
-    # Equivalent to 255*( ( ( (x-20000) / 100) -_min ) / ( _max - _min) )
-    # Much faster than floating point temperature operations
-    temp = cv2.convertScaleAbs(rawFrame, alpha=255 / (100 * _dt), beta=-255 * (273 / _dt + min / _dt))
-    return temp
 
 
 def create_text_field(root, label, current_value, row):
@@ -181,6 +159,13 @@ def create_slider(root, label, min_val, max_val, current_value, variable, row):
     variable.set(current_value)
 
 
+def create_checkbox(root, label, current_value, variable, row):
+    checkbox = ttk.Checkbutton(root, text=label, variable=variable, onvalue=1, offvalue=0)
+    checkbox.grid(
+        column = 0,
+        row=row,
+        sticky='w')
+    variable.set(current_value)
 
 
 def pause_callback():
@@ -198,34 +183,35 @@ def draw_metadata(frame, metadata):
     row_idx = 0
 
     x_offset = 1
-    y_offset = 10
+    y_offset = 20
+    scalar = 20
 
     font = cv2.FONT_HERSHEY_SIMPLEX
-    font_scale = 0.3
+    font_scale = 0.6
     color = 255
     thickness = 1
     org = (x_offset, row_idx*10 + y_offset)
 
     time_string = datetime.datetime.fromtimestamp(metadata.timestamp).strftime('%Y-%m-%d %H:%M:%S')
 
-    frame = cv2.putText(frame, f"Date: {time_string}", org, font, font_scale, color, thickness, cv2.LINE_AA)
+    frame = cv2.putText(frame, f"time: {time_string}", org, font, font_scale, color, thickness, cv2.LINE_AA)
     row_idx += 1
 
-    accepted_keys = ["frame", "lat", "lon", "alt", "airspeed", "groundspeed", "groundcourse"]
+    accepted_keys = ["frame", "lat", "lon", "alt", "airspeed", "groundspeed", "groundcourse", "agl"]
     dat = metadata.as_dict()
     for key, val in dat.items():
         if val is not None and val and (key == "lat" or key == "lon"):
             val = f"{val:.5f}"
         if val is not None and val and (key == "groundspeed" or key == "airspeed" or key == "groundcourse"):
             val = f"{val:.1f}"
-        if val is not None and val and (key == "alt"):
+        if val is not None and val and (key == "alt" or key == "agl"):
             val = f"{val:.0f}"
         
 
 
         if not key in accepted_keys:
             continue
-        org = (x_offset, row_idx*10 + y_offset)
+        org = (x_offset, row_idx*scalar + y_offset)
         frame = cv2.putText(frame, f"{key}: {val}", org, font, font_scale, color, thickness, cv2.LINE_AA)
         row_idx += 1
 
@@ -246,9 +232,9 @@ def video_loop():
 
     eof_flag = False
 
+    tf = ThermalFlow()
+
     while True:
-        _min_temp = min_temp.get()
-        _max_temp = max_temp.get()
 
         thermal_window_name = "Thermal"
         #window = cv2.namedWindow(thermal_window_name, cv2.WINDOW_NORMAL)
@@ -285,11 +271,21 @@ def video_loop():
         full_filepath = os.path.join(thermal_directory, image_filename)
         frame_16bit = cv2.imread(full_filepath, -1)
 
-        frame_8bit = rawToThermalFrame(frame_16bit, _min_temp, _max_temp)
-        frame_8bit = draw_metadata(frame_8bit, metadata)
+
+        if automatic_bracketing.get():
+            mn, mx = compute_thermal_bracket(frame_16bit)
+            min_temp.set(mn)
+            max_temp.set(mx)
+
+        _min_temp = min_temp.get()
+        _max_temp = max_temp.get()
+
+        #tf.pass_frame(frame_16bit)
+        frame_8bit = raw_to_thermal_frame(frame_16bit, _min_temp, _max_temp)
 
         _scale = image_scale.get()
         frame_8bit = cv2.resize(frame_8bit, None, fx=_scale, fy=_scale)
+        frame_8bit = draw_metadata(frame_8bit, metadata)
 
         while time.time() - previous_iteration_time < dt:
             time.sleep(0.001)
@@ -345,7 +341,9 @@ def main():
     create_slider(root, "Max Temp", -30, 70, 50, max_temp, row_idx); row_idx += 1
 
     create_slider(root, "Frame Index", 0, len(image_files)-1, 0, frame_index, row_idx); row_idx += 1
-    create_slider(root, "Scale", 1, 10, 1, image_scale, row_idx); row_idx += 1
+    create_slider(root, "Scale", 1, 10, 4, image_scale, row_idx); row_idx += 1
+
+    create_checkbox(root, "Auto Bracketing", 0, automatic_bracketing, row_idx); row_idx += 1
 
 
     t = Thread(target=video_loop)

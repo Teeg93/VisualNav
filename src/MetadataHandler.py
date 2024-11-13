@@ -3,7 +3,7 @@ import json
 import numpy as np
 
 class MavlinkMetadata:
-    def __init__(self, filename, frame, timestamp, lat, lon, alt, airspeed, groundspeed, throttle, roll, pitch, yaw, rollspeed, pitchspeed, yawspeed, exposure_start, exposure_end, attitude_extended, groundcourse=None):
+    def __init__(self, filename, frame, timestamp, lat, lon, alt, airspeed, groundspeed, throttle, roll, pitch, yaw, rollspeed, pitchspeed, yawspeed, exposure_start, exposure_end, attitude_extended, groundcourse=None, agl=None):
         self.filename = filename
         self.frame = frame
         self.timestamp = timestamp
@@ -23,6 +23,7 @@ class MavlinkMetadata:
         self.exposure_end = exposure_end
         self.attitude_extended = attitude_extended
         self.groundcourse = groundcourse
+        self.agl = agl
 
     def as_dict(self):
         return {
@@ -31,7 +32,6 @@ class MavlinkMetadata:
             "timestamp": self.timestamp,
             "lat": self.lat,
             "lon": self.lon,
-            "alt": self.alt,
             "airspeed": self.airspeed,
             "groundspeed": self.groundspeed,
             "throttle": self.throttle,
@@ -44,7 +44,9 @@ class MavlinkMetadata:
             "exposure_start": self.exposure_start,
             "exposure_end": self.exposure_end,
             "attitude_extended": self.attitude_extended,
-            "groundcourse": self.groundcourse
+            "groundcourse": self.groundcourse,
+            "alt": self.alt,
+            "agl": self.agl
         }
 
     def __str__(self):
@@ -56,7 +58,6 @@ class MavlinkMetadata:
         string += f"Exposure end: {self.exposure_end}\n"
         string += f"Latitude: {self.lat}\n"
         string += f"Longitude: {self.lon}\n"
-        string += f"Altitude: {self.alt}\n"
         string += f"Airspeed: {self.airspeed}\n"
         string += f"Groundspeed: {self.groundspeed}\n"
         string += f"Throttle: {self.throttle}\n"
@@ -68,6 +69,9 @@ class MavlinkMetadata:
         string += f"Yawspeed: {self.yawspeed}\n"
         string += f"Attitude Extended: {json.dumps(self.attitude_extended, indent=4)}\n"
         string += f"Groundcourse: {json.dumps(self.groundcourse, indent=4)}\n"
+        string += f"Altitude: {self.alt}\n"
+        string += f"AGL: {json.dumps(self.agl, indent=4)}\n"
+
         return string
 
 class MetadataHandlerCSV:
@@ -126,6 +130,11 @@ class MetadataHandlerCSV:
             groundcourse = row.values[0][18]
         except:
             groundcourse = None
+        
+        try:
+            agl = row.values[0][19]
+        except:
+            agl = None
 
         metadata = MavlinkMetadata(filename,
                                    frame,
@@ -145,7 +154,8 @@ class MetadataHandlerCSV:
                                    exposure_start,
                                    exposure_end,
                                    attitude_extended,
-                                   groundcourse
+                                   groundcourse,
+                                   agl
                                    )
 
         return metadata
