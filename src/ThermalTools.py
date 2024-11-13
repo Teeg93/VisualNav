@@ -86,7 +86,6 @@ class ThermalFlow:
         # Create a 3-channel colour frame for display purposes
         display_frame = np.reshape(frame_8_bit, (frame_8_bit.shape[0], frame_8_bit.shape[1], 1))
         display_frame = cv2.cvtColor(display_frame, cv2.COLOR_GRAY2BGR)
-        print("Created display frame")
 
         if len(self.tracks) > 0:
             img0, img1 = self.previous_frame, frame_8_bit
@@ -111,20 +110,16 @@ class ThermalFlow:
         if self.frame_idx % self.redetection_interval == 0:
         # Ignore temperatures that are clipping
             mask = cv2.inRange(frame_8_bit, 1, 254)
-            print("Created Mask")
 
             # Ignore existing tracking points
             for x, y in [np.int32(tr[-1]) for tr in self.tracks]:
                 cv2.circle(mask, (x, y), 5, 0, -1)
-            print("Removed existing tracks from mask")
             
             p = cv2.goodFeaturesToTrack(frame_8_bit, mask=mask, **self.feature_params)
-            print("Detected features")
 
             if p is not None:
                 for x, y in np.float32(p).reshape(-1, 2):
                     self.tracks.append([(x, y)])
-                    print("Appending new tracks")
         
         self.previous_frame = frame_8_bit
         return display_frame

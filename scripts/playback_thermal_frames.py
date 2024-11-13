@@ -192,7 +192,7 @@ def draw_metadata(frame, metadata):
     font_scale = 0.6
 
     if len(frame.shape) > 2 and frame.shape[2] >= 2:
-        color = (255, 255, 255)
+        color = (100, 100, 255)
     else:
         color = 255
     thickness = 1
