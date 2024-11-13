@@ -1,6 +1,8 @@
 import cv2
 import numpy as np
 
+color = np.random.randint(0, 255, (100, 3))
+
 def raw_to_thermal_frame(raw_frame, min, max):
     """
     Use the device configuration to scale the 16-bit image to an 8 bit image, given the min & max temperatures.
@@ -54,10 +56,64 @@ def compute_thermal_bracket(frame, min_val=27300, max_val=37300, count_threshold
 class ThermalFlow:
     def __init__(self):
         self.previous_frame = None
+        self.p0 = None
+
         self.current_frame = None
+        self.p1 = None
     
+        self.feature_params = dict( maxCorners = 100,
+                                    qualityLevel = 0.03,
+                                    minDistance = 7,
+                                    blockSize = 7 )
+        
+        self.lk_params = dict( winSize  = (15, 15),
+                               maxLevel = 2,
+                               criteria = (cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, 10, 0.03))
 
     def pass_frame(self, frame):
-        min, max = compute_thermal_bracket(frame)
+        img = None
+        _min_temp, _max_temp = compute_thermal_bracket(frame)
+        frame_8_bit = raw_to_thermal_frame(frame, _min_temp, _max_temp)
+
+        # Ignore temperatures that are clipping
+        mask = cv2.inRange(frame_8_bit, 1, 254)
+
+        if self.previous_frame is None:
+            self.p0 = cv2.goodFeaturesToTrack(frame_8_bit, mask=mask, **self.feature_params)
+            self.previous_frame = frame_8_bit
+
+        else:
+            self.p1, st, err = cv2.calcOpticalFlowPyrLK(self.previous_frame, frame_8_bit, self.p0, None, **self.lk_params)
+            self.previous_frame = frame_8_bit
+            if self.p1 is not None:
+                good_new = self.p1[st==1]
+                good_old = self.p0[st==1]
+            
+            frame_8_bit = np.reshape(frame_8_bit, (frame_8_bit.shape[0], frame_8_bit.shape[1], 1))
+            frame_8_bit = cv2.cvtColor(frame_8_bit, cv2.COLOR_GRAY2BGR)
+            for i, (new, old) in enumerate(zip(good_new, good_old)):
+                a, b = new.ravel()
+                c, d = old.ravel()
+
+                mask = np.zeros_like(frame_8_bit)
+                mask = cv2.line(mask, (int(a), int(b)), (int(c), int(d)), color[i].tolist(), 2)
+                frame_display = cv2.circle(frame_8_bit, (int(a), int(b)), 5, color[i].tolist(), -1)
+
+            img = cv2.add(frame_display, mask)
+
+            self.p0 = good_new.reshape(-1, 1, 2)
+        
+        if img is not None:
+            return img
+        else:
+            return frame_8_bit
+        
+
+
+
+
+
+
+
 
 

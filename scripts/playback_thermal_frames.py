@@ -20,6 +20,8 @@ max_temp = tk.IntVar()
 frame_index = tk.IntVar()
 image_scale = tk.IntVar()
 automatic_bracketing = tk.IntVar()
+optical_flow = tk.IntVar()
+
 
 play_video = False
 
@@ -188,7 +190,11 @@ def draw_metadata(frame, metadata):
 
     font = cv2.FONT_HERSHEY_SIMPLEX
     font_scale = 0.6
-    color = 255
+
+    if len(frame.shape) > 2 and frame.shape[2] >= 2:
+        color = (255, 255, 255)
+    else:
+        color = 255
     thickness = 1
     org = (x_offset, row_idx*10 + y_offset)
 
@@ -270,6 +276,7 @@ def video_loop():
 
         full_filepath = os.path.join(thermal_directory, image_filename)
         frame_16bit = cv2.imread(full_filepath, -1)
+        frame_16bit = frame_16bit[:233,:]
 
 
         if automatic_bracketing.get():
@@ -280,8 +287,10 @@ def video_loop():
         _min_temp = min_temp.get()
         _max_temp = max_temp.get()
 
-        #tf.pass_frame(frame_16bit)
-        frame_8bit = raw_to_thermal_frame(frame_16bit, _min_temp, _max_temp)
+        if optical_flow.get():
+            frame_8bit = tf.pass_frame(frame_16bit)
+        else:
+            frame_8bit = raw_to_thermal_frame(frame_16bit, _min_temp, _max_temp)
 
         _scale = image_scale.get()
         frame_8bit = cv2.resize(frame_8bit, None, fx=_scale, fy=_scale)
@@ -344,6 +353,7 @@ def main():
     create_slider(root, "Scale", 1, 10, 4, image_scale, row_idx); row_idx += 1
 
     create_checkbox(root, "Auto Bracketing", 0, automatic_bracketing, row_idx); row_idx += 1
+    create_checkbox(root, "Optical Flow", 0, optical_flow, row_idx); row_idx += 1
 
 
     t = Thread(target=video_loop)
