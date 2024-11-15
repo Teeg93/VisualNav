@@ -185,24 +185,24 @@ def draw_metadata(frame, metadata):
     row_idx = 0
 
     x_offset = 1
-    y_offset = 20
-    scalar = 20
+    y_offset = 30
+    scalar = 30
 
     font = cv2.FONT_HERSHEY_SIMPLEX
-    font_scale = 0.6
+    font_scale = 1
 
     if len(frame.shape) > 2 and frame.shape[2] >= 2:
-        color = (100, 100, 255)
+        color = (255, 255, 255)
     else:
         color = 255
-    thickness = 1
+    thickness = 2
     org = (x_offset, row_idx*10 + y_offset)
 
     filename = metadata.filename
     timestamp = float(metadata.filename.split(".")[0])/1000
     time_string = datetime.datetime.fromtimestamp(timestamp).strftime('%Y-%m-%d %H:%M:%S')
 
-    frame = cv2.putText(frame, f"time: {time_string}", org, font, font_scale, color, thickness, cv2.LINE_AA)
+    frame = cv2.putText(frame, f"{time_string}", org, font, font_scale, color, thickness, cv2.LINE_AA)
     row_idx += 1
 
     accepted_keys = ["frame", "lat", "lon", "alt", "airspeed", "groundspeed", "groundcourse", "agl"]

@@ -3,6 +3,15 @@ import numpy as np
 
 color = np.random.randint(0, 255, (100, 3))
 
+
+f = 80 / np.tan(np.radians(28.5))
+lepton3_intrinsic_matrix = np.array([
+    [f, 0, 80],
+    [0, f, 60],
+    [0, 0, 1]
+])
+
+
 def raw_to_thermal_frame(raw_frame, min, max):
     """
     Use the device configuration to scale the 16-bit image to an 8 bit image, given the min & max temperatures.
@@ -14,7 +23,6 @@ def raw_to_thermal_frame(raw_frame, min, max):
     if min >= max:
         print("Warning: Minimum temperature greater than or equal to max temperature. Setting min less than max")
         min = max - 1
-        min_temp.set(max_temp.get() -1)
 
     # Get temperature range limits
     _dt = max - min
@@ -70,7 +78,7 @@ class ThermalFlow:
         self.tracks = []
     
         self.feature_params = dict( maxCorners = 300,
-                                    qualityLevel = 0.3,
+                                    qualityLevel = 0.05,
                                     minDistance = 7,
                                     blockSize = 7 )
         
