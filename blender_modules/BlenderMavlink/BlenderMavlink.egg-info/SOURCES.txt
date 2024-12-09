@@ -1,9 +1,0 @@
-LICENSE
-README.md
-setup.py
-BlenderMavlink/BlenderMavlink.py
-BlenderMavlink/__init__.py
-BlenderMavlink.egg-info/PKG-INFO
-BlenderMavlink.egg-info/SOURCES.txt
-BlenderMavlink.egg-info/dependency_links.txt
-BlenderMavlink.egg-info/top_level.txt

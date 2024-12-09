@@ -1,2 +1,7 @@
 *.pyc
 *pyc
+build/*
+*build/*
+*build
+*/build*
+*.egg-info
