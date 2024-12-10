@@ -5,8 +5,20 @@ from pymavlink import mavutil
 import time
 import socket
 import numpy as np
+from .Geo import *
 
 import bpy
+
+import importlib
+
+try:
+    import BlenderGIS
+except ModuleNotFoundError:
+    try:
+        BlenderGIS = importlib.import_module('BlenderGIS-master')
+    except ModuleNotFoundError:
+        print("WARNING: Could not locate BlenderGIS!")
+
 
 target_messages = [
     'LOCAL_POSITION_NED',
@@ -15,6 +27,9 @@ target_messages = [
     'SIMSTATE'
 ]
 
+
+#C_blend_reg = rotation_matrix(180, 0, 0)
+C_cam_ac = rotation_matrix(0, 0,0)
 
 class BlenderMavlinkOperator(bpy.types.Operator):
     bl_idname = 'mavlink.camera'
@@ -43,7 +58,7 @@ class BlenderMavlinkOperator(bpy.types.Operator):
 
     def modal(self, context, event):
         if event.type in ['ESC']:
-            print("RIGHT CLICK -- STOPPING")
+            print("STOPPING MAVLINK")
             self.cleanup()
             return {'FINISHED'}
 
@@ -67,11 +82,21 @@ class BlenderMavlinkOperator(bpy.types.Operator):
                 lon = float(values[8])
                 lat = float(values[9])
 
-                #print(f"Lat: {lat}, Lon: {lon}, roll: {roll}, pitch: {pitch}, yaw: {yaw}")
+                C_ac = rotation_matrix(roll, pitch, yaw, degrees=False)
+                C_cam = np.matmul(C_cam_ac, C_ac)
+                cam_roll, cam_pitch, cam_yaw = dcm_to_euler_angle(C_cam)
 
-                self.camera.rotation_euler = (roll, pitch, yaw)
+                x, y = get_xy_offset_from_origin(self.scene_origin_lat, self.scene_origin_lon, lat, lon)
 
+                self.camera.rotation_euler = (cam_pitch, cam_roll, -cam_yaw)
+                self.camera.location = (x, y, altitude)
+
+            # Don't hog the CPU cycles waiting for data
             except TimeoutError:
+                pass
+
+            # The first transmission contains labels
+            except ValueError:
                 pass
 
 
@@ -85,6 +110,14 @@ class BlenderMavlinkOperator(bpy.types.Operator):
         self.sock.settimeout(0.1)
         self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 1)
         self.sock.bind((self.jsbsim_ip, self.jsbsim_port))
+
+        #TODO: Check this, probably need exception conditions if there is no geoscene or BlenderGIS available
+        self.geoscene = BlenderGIS.geoscene.GeoScene()
+        self.scene_origin_lon, self.scene_origin_lat = self.geoscene.getOriginGeo()
+
+        if self.scene_origin_lon is None or self.scene_origin_lat is None:
+            print(f"Failed to find the GeoScene origin")
+            return {'FINISHED'}
 
         print(f"Mavlink waiting for heartbeat on port {self.mavlink_port}")
         heartbeat = self.conn.wait_heartbeat(timeout=5)
