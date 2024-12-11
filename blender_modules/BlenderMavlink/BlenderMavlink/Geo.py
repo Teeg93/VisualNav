@@ -1,6 +1,9 @@
 import numpy as np
 from math import *
 
+
+FT_TO_M = 0.3048
+
 def haversine(lat1, lon1, lat2, lon2):
     """
     Calculate the great circle distance in kilometers between two points 

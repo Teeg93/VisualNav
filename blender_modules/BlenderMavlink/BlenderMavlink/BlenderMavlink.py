@@ -27,6 +27,14 @@ target_messages = [
     'SIMSTATE'
 ]
 
+PICAM = {
+    'sensor_width': 3.691,
+    'sensor_height': 2.813,
+    'focal_length': 3.04,
+    'clip_start': 0.01,
+    'clip_end': 10000
+}
+
 
 #C_blend_reg = rotation_matrix(180, 0, 0)
 C_cam_ac = rotation_matrix(0, 0,0)
@@ -72,7 +80,7 @@ class BlenderMavlinkOperator(bpy.types.Operator):
                 values = [x.strip() for x in values]
 
                 time = float(values[0])
-                altitude = float(values[1])
+                altitude = float(values[1]) * FT_TO_M + 0.1 # to keep above the ground
                 roll = np.radians(float(values[2]))
                 pitch = np.radians(float(values[3]))
                 yaw = np.radians(float(values[4]))
@@ -105,6 +113,16 @@ class BlenderMavlinkOperator(bpy.types.Operator):
     def invoke(self, context, event):
         self.scene = context.scene
         self.camera = self.scene.camera
+
+        self.camera.data.lens_unit = "MILLIMETERS"
+        self.camera.data.sensor_width = PICAM['sensor_width']
+        self.camera.data.sensor_height = PICAM['sensor_height']
+        self.camera.data.lens = PICAM['focal_length']
+        self.camera.data.clip_start = PICAM['clip_start']
+        self.camera.data.clip_end = PICAM['clip_end']
+
+
+
         self.conn = mavutil.mavlink_connection(self.mavlink_port)
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.sock.settimeout(0.1)
@@ -115,9 +133,12 @@ class BlenderMavlinkOperator(bpy.types.Operator):
         self.geoscene = BlenderGIS.geoscene.GeoScene()
         self.scene_origin_lon, self.scene_origin_lat = self.geoscene.getOriginGeo()
 
+
         if self.scene_origin_lon is None or self.scene_origin_lat is None:
             print(f"Failed to find the GeoScene origin")
             return {'FINISHED'}
+
+        print(f"Scene origin set to {self.scene_origin_lat} {self.scene_origin_lon}")
 
         print(f"Mavlink waiting for heartbeat on port {self.mavlink_port}")
         heartbeat = self.conn.wait_heartbeat(timeout=5)
