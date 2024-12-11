@@ -8,6 +8,7 @@ import numpy as np
 from .Geo import *
 
 import bpy
+import gpu
 
 import importlib
 
@@ -99,6 +100,16 @@ class BlenderMavlinkOperator(bpy.types.Operator):
                 self.camera.rotation_euler = (cam_pitch, cam_roll, -cam_yaw)
                 self.camera.location = (x, y, altitude)
 
+                try:
+                    ac_roll, ac_pitch, ac_yaw = dcm_to_euler_angle(C_ac)
+                    ac = context.scene.objects['aircraft']
+                    ac.rotation_euler = (-ac_roll+pi/2, ac_pitch, -ac_yaw-pi/2)
+                    ac.location = (x, y, altitude + 0.5)
+
+                # Aircraft not found
+                except KeyError:
+                    pass
+
             # Don't hog the CPU cycles waiting for data
             except TimeoutError:
                 pass
@@ -106,6 +117,7 @@ class BlenderMavlinkOperator(bpy.types.Operator):
             # The first transmission contains labels
             except ValueError:
                 pass
+
 
 
         return {'RUNNING_MODAL'}
