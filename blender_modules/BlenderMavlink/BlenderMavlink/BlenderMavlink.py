@@ -94,7 +94,7 @@ class BlenderMavlinkOperator(bpy.types.Operator):
                 C_cam = np.matmul(C_cam_ac, C_ac)
                 cam_roll, cam_pitch, cam_yaw = dcm_to_euler_angle(C_cam)
 
-                x, y = get_xy_offset_from_origin(self.scene_origin_lat, self.scene_origin_lon, lat, lon)
+                x, y = get_xy_offset_from_origin_mercator(self.scene_origin_lat, self.scene_origin_lon, lat, lon)
 
                 self.camera.rotation_euler = (cam_pitch, cam_roll, -cam_yaw)
                 self.camera.location = (x, y, altitude)

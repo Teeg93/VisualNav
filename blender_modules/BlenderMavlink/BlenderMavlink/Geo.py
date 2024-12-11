@@ -38,9 +38,13 @@ def bearing(lat1, lon1, lat2, lon2):
     return bearing
 
 
-def get_xy_offset_from_origin(origin_lat, origin_lon, target_lat, target_lon):
+def get_xy_offset_from_origin_mercator(origin_lat, origin_lon, target_lat, target_lon):
 
     target_range = haversine(origin_lat, origin_lon, target_lat, target_lon) * 1000
+
+    # Mercator projection requires a scaling by cos(lat)
+    target_range = target_range / cos(radians(origin_lat))
+
     target_bearing = bearing(origin_lat, origin_lon, target_lat, target_lon)
 
     offset_x = target_range * sin(radians(target_bearing))
