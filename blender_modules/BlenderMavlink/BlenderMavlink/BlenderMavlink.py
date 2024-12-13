@@ -9,17 +9,10 @@ from .Geo import *
 
 import bpy
 import gpu
+import redis
+import struct
 
 import importlib
-
-try:
-    import BlenderGIS
-except ModuleNotFoundError:
-    try:
-        BlenderGIS = importlib.import_module('BlenderGIS-master')
-    except ModuleNotFoundError:
-        print("WARNING: Could not locate BlenderGIS!")
-
 
 target_messages = [
     'LOCAL_POSITION_NED',
@@ -37,6 +30,9 @@ PICAM = {
 }
 
 
+WIDTH = 512
+HEIGHT = 512
+
 #C_blend_reg = rotation_matrix(180, 0, 0)
 C_cam_ac = rotation_matrix(0, 0,0)
 
@@ -46,6 +42,7 @@ class BlenderMavlinkOperator(bpy.types.Operator):
 
     mavlink_port = "tcp:localhost:5762"
     mavlink_port = "udp:localhost:14550"
+
 
 
     jsbsim_port = 5510
@@ -64,6 +61,25 @@ class BlenderMavlinkOperator(bpy.types.Operator):
         self.scene = None
         self.camera = None
         self.conn = None
+
+
+        # Redis server
+        self.r = None
+        self.redis_id = 'camera1'
+
+
+    def to_redis(self, arr):
+        h, w = arr.shape[:2]
+
+        print(arr.dtype)
+        print(arr.shape)
+
+        shape = struct.pack('>II', h, w)
+        encoded = shape + arr.tobytes()
+
+        self.r.set(self.redis_id, encoded)
+        return
+
 
     def modal(self, context, event):
         if event.type in ['ESC']:
@@ -117,12 +133,22 @@ class BlenderMavlinkOperator(bpy.types.Operator):
             # The first transmission contains labels
             except ValueError:
                 pass
+            
 
+            fb = gpu.state.active_framebuffer_get()
+            #fb.clear(color=(0, 0, 0))
+            buffer = fb.read_color(0, 0, WIDTH, HEIGHT, 3, 0, 'UBYTE')
+            breakpoint()
+            arr = np.array(buffer)
+            self.to_redis(arr)
 
 
         return {'RUNNING_MODAL'}
 
     def invoke(self, context, event):
+
+        self.r = redis.Redis(host="localhost", port=6379, db=0)
+
         self.scene = context.scene
         self.camera = self.scene.camera
 
@@ -142,12 +168,12 @@ class BlenderMavlinkOperator(bpy.types.Operator):
         self.sock.bind((self.jsbsim_ip, self.jsbsim_port))
 
         #TODO: Check this, probably need exception conditions if there is no geoscene or BlenderGIS available
-        self.geoscene = BlenderGIS.geoscene.GeoScene()
-        self.scene_origin_lon, self.scene_origin_lat = self.geoscene.getOriginGeo()
-
+        self.scene_origin_lat = self.scene['latitude']
+        self.scene_origin_lon = self.scene['longitude']
 
         if self.scene_origin_lon is None or self.scene_origin_lat is None:
             print(f"Failed to find the GeoScene origin")
+            self.cleanup()
             return {'FINISHED'}
 
         print(f"Scene origin set to {self.scene_origin_lat} {self.scene_origin_lon}")
@@ -156,6 +182,7 @@ class BlenderMavlinkOperator(bpy.types.Operator):
         heartbeat = self.conn.wait_heartbeat(timeout=5)
         if heartbeat is None:
             print(f"Failed to connect")
+            self.cleanup()
             return {'FINISHED'}
         else:
 
@@ -186,6 +213,10 @@ class BlenderMavlinkOperator(bpy.types.Operator):
     def cleanup(self):
         if self.conn is not None:
             self.conn.close()
+        
+        if self.r is not None and self.r:
+            if self.r.connection is not None:
+                self.r.connection.disconnect()
 
 
 def menu_func(self, context):
