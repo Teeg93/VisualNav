@@ -22,6 +22,9 @@ public:
 	UJSBSimInterface();
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Networking") int port;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Time of day") int time_offset_hours;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Time of day") int time_offset_minutes;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Time of day") int time_offset_seconds;
 
 protected:
 	// Called when the game starts

@@ -16,6 +16,9 @@ UJSBSimInterface::UJSBSimInterface()
 	PrimaryComponentTick.bCanEverTick = true;
 
 	port = 8000;
+	time_offset_hours = 0;
+	time_offset_minutes = 0;
+	time_offset_seconds = 0;
 
 	// ...
 }
@@ -76,7 +79,7 @@ void UJSBSimInterface::TickComponent(float DeltaTime, ELevelTick TickType, FActo
 		FVector2D pos = get_xy_offset_from_origin(origin_lat, origin_lon, lat, lon);
 
 		FVector3d location = {pos.X * 100, -pos.Y * 100, alt * 100};
-		FRotator rotation = {pitch * RAD_TO_DEG, roll * RAD_TO_DEG, yaw * RAD_TO_DEG};
+		FRotator rotation = {-roll, yaw, pitch };
 
 		//GEngine->AddOnScreenDebugMessage(-1, 10.0f, FColor::Blue, FString::Printf(TEXT("%.5f, %.5f, %.5f"), pos.X, pos.Y, alt ));
 

@@ -18,13 +18,12 @@
 
 JSBSim::JSBSim(int port, double initial_timestamp){
 
-    //timeval socket_timeout;
-    //socket_timeout.tv_sec = 0;
-    //socket_timeout.tv_usec = 10;
+    timeval socket_timeout;
+    socket_timeout.tv_sec = 0;
+    socket_timeout.tv_usec = 10;
 
     if ( (socket_fd = socket(AF_INET, SOCK_DGRAM, 0)) < 0){
         std::cerr << "Failed to open JSBSim Socket!" << std::endl;
-        exit(-1);
     }
 
     int _buffer_size = 1;
@@ -32,9 +31,9 @@ JSBSim::JSBSim(int port, double initial_timestamp){
         std::cerr << "Socket option error!" << std::endl;
     }
 
-    //if (setsockopt(socket_fd, SOL_SOCKET, SO_RCVTIMEO, &socket_timeout, sizeof(socket_timeout)) < 0){
-        //std::cerr << "Socket option error!" << std::endl;
-    //}
+    if (setsockopt(socket_fd, SOL_SOCKET, SO_RCVTIMEO, &socket_timeout, sizeof(socket_timeout)) < 0){
+        std::cerr << "Socket option error!" << std::endl;
+    }
 
     memset(&server_addr, 0, sizeof(server_addr));
     memset(&client_addr, 0, sizeof(client_addr));
