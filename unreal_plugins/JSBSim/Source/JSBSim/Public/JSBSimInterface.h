@@ -38,6 +38,10 @@ protected:
 	double origin_lon;
 	double origin_alt;
 
+	double previous_timestamp;
+	double previous_x_loc = 0;
+	double previous_y_loc = 0;
+
 public:	
 	// Called every frame
 	virtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;

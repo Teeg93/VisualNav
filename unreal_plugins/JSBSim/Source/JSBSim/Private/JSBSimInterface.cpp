@@ -20,6 +20,11 @@ UJSBSimInterface::UJSBSimInterface()
 	time_offset_minutes = 0;
 	time_offset_seconds = 0;
 
+	previous_timestamp = 0;
+
+	previous_x_loc = 0;
+	previous_y_loc = 0;
+
 	// ...
 }
 
@@ -66,7 +71,7 @@ void UJSBSimInterface::TickComponent(float DeltaTime, ELevelTick TickType, FActo
 	FVector loc = actor->GetActorLocation();
 
 	int ret = jsbsim->recv();
-	if (ret >= 0){
+	if (ret >= 0 && jsbsim->timestamp > previous_timestamp){
 		double pitch = jsbsim->pitch;
 		double roll = jsbsim->roll;
 		double yaw = jsbsim->yaw;
@@ -74,17 +79,41 @@ void UJSBSimInterface::TickComponent(float DeltaTime, ELevelTick TickType, FActo
 		double lon = jsbsim->lon;
 		double alt = jsbsim->alt;
 		double timestamp = jsbsim->timestamp;
+		previous_timestamp = timestamp;
 
 
 		FVector2D pos = get_xy_offset_from_origin(origin_lat, origin_lon, lat, lon);
 
-		FVector3d location = {pos.X * 100, -pos.Y * 100, alt * 100};
+		FVector3d location = {pos.X * 100.0, -pos.Y * 100.0, alt * 100.0};
 		FRotator rotation = {-roll, yaw, pitch };
 
-		//GEngine->AddOnScreenDebugMessage(-1, 10.0f, FColor::Blue, FString::Printf(TEXT("%.5f, %.5f, %.5f"), pos.X, pos.Y, alt ));
+		/*
+		bool high_motion_flag = false;
 
-		actor->SetActorLocation(location, false);
-		actor->SetActorRotation(rotation);
+		if (abs(pos.X - previous_x_loc) > 2 ){
+			high_motion_flag = true;
+			GEngine->AddOnScreenDebugMessage(-1, 10.0f, FColor::Red, FString::Printf(TEXT("Previous x loc: %.5f,  Current x loc: %.5f"),  previous_x_loc, pos.X ));
+			GEngine->AddOnScreenDebugMessage(-1, 10.0f, FColor::Red, FString::Printf(TEXT("Lat: %.8f,  Lon: %.8f"),  lat, lon ));
+		}
+
+		if (abs(pos.Y - previous_y_loc) > 2 ){
+			high_motion_flag = true;
+			GEngine->AddOnScreenDebugMessage(-1, 10.0f, FColor::Red, FString::Printf(TEXT("Previous y loc: %.5f,  Current y loc: %.5f"),  previous_y_loc, pos.Y ));
+			GEngine->AddOnScreenDebugMessage(-1, 10.0f, FColor::Red, FString::Printf(TEXT("Lat: %.8f,  Lon: %.8f"),  lat, lon ));
+		}
+		*/
+
+
+		previous_x_loc = pos.X;
+		previous_y_loc = pos.Y;
+
+		//GEngine->AddOnScreenDebugMessage(-1, 10.0f, FColor::Blue, FString::Printf(TEXT("%.5f, %.5f, %.5f"), pos.X, pos.Y, alt ));
+		//GEngine->AddOnScreenDebugMessage(-1, 10.0f, FColor::Blue, FString::Printf(TEXT("%.7f, %.7f"), lat, lon));
+
+		//if (!high_motion_flag){
+			actor->SetActorLocation(location, false);
+			actor->SetActorRotation(rotation);
+		//}
 
 	}
 	else {

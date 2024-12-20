@@ -20,7 +20,7 @@ JSBSim::JSBSim(int port, double initial_timestamp){
 
     timeval socket_timeout;
     socket_timeout.tv_sec = 0;
-    socket_timeout.tv_usec = 10;
+    socket_timeout.tv_usec = 1000;
 
     if ( (socket_fd = socket(AF_INET, SOCK_DGRAM, 0)) < 0){
         std::cerr << "Failed to open JSBSim Socket!" << std::endl;
@@ -28,7 +28,7 @@ JSBSim::JSBSim(int port, double initial_timestamp){
 
     int _buffer_size = 1;
     if (setsockopt(socket_fd, SOL_SOCKET, SO_RCVBUF, &_buffer_size, sizeof(int)) < 0){
-        std::cerr << "Socket option error!" << std::endl;
+        //std::cerr << "Socket option error!" << std::endl;
     }
 
     if (setsockopt(socket_fd, SOL_SOCKET, SO_RCVTIMEO, &socket_timeout, sizeof(socket_timeout)) < 0){
@@ -52,6 +52,7 @@ JSBSim::JSBSim(int port, double initial_timestamp){
     _initial_timestamp = initial_timestamp;
 
     std::cout << std::fixed << "Initial Timestamp: " << _initial_timestamp << std::endl;
+
     timestamp = _initial_timestamp;
     roll = 0;
     pitch = 0;
@@ -130,6 +131,11 @@ int JSBSim::unpack_buffer(){
 
     // std::cout << "Timestamp: " << timestamp << ", Roll: " << roll << ", Pitch: " << pitch << ", Yaw: " << yaw << ", Lat: " << lat << ", Lon: " << lon << std::endl;
     // std::cout << std::fixed << "Timestamp: " << timestamp << std::endl;
+
+    for (unsigned int i=0; i<BUFFERSIZE; i++){
+        buffer[i] = 0;
+    }
+
     return 0;
 }
 
@@ -147,6 +153,12 @@ int JSBSim::recv(){
     if (ret >= 0){
         last_recv_time = std::time(0);
     }
+
+    // Drain the buffer
+    //while (n>0){
+        //n = recvfrom(socket_fd, (char *)buffer, BUFFERSIZE, MSG_WAITALL, (struct sockaddr *)&client_addr, &len);
+    //}
+
     return ret;
 }
 

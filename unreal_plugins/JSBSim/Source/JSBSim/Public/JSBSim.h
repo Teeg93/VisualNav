@@ -11,7 +11,7 @@
 
 #include "CoreMinimal.h"
 
-#define BUFFERSIZE 2048
+#define BUFFERSIZE 1024
 
 class JSBSim
 {
