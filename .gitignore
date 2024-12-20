@@ -5,3 +5,5 @@ build/*
 *build
 */build*
 *.egg-info
+unreal_plugins/JSBSim/Binaries/*
+unreal_plugins/JSBSim/Intermediate/Build/*
