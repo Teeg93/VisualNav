@@ -11,6 +11,7 @@
 
 #include "JSBSimInterface.generated.h"
 
+// #define CSV_OUTPUT "/tmp/unreal_camera_sim.csv"
 
 UCLASS( ClassGroup=(Custom), meta=(BlueprintSpawnableComponent) )
 class UJSBSimInterface : public UActorComponent

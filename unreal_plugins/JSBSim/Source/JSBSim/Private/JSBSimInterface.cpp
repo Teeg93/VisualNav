@@ -5,6 +5,9 @@
 #include "Math/MathFwd.h"
 #include "Kismet/GameplayStatics.h"
 #include "Geo.h"
+#include <iostream>
+#include <fstream>
+#include <iomanip>
 
 #include "CesiumGeoreference.h"
 
@@ -25,6 +28,14 @@ UJSBSimInterface::UJSBSimInterface()
 	previous_x_loc = 0;
 	previous_y_loc = 0;
 
+
+	#ifdef CSV_OUTPUT
+		std::ofstream f;
+		f.open(CSV_OUTPUT);
+		f << "timestamp, lat, lon, x, y\n";
+		f.close();
+
+	#endif
 	// ...
 }
 
@@ -87,6 +98,15 @@ void UJSBSimInterface::TickComponent(float DeltaTime, ELevelTick TickType, FActo
 		FVector3d location = {pos.X * 100.0, -pos.Y * 100.0, alt * 100.0};
 		FRotator rotation = {-roll, yaw, pitch };
 
+		#ifdef CSV_OUTPUT
+			std::ofstream f;
+			f.open(CSV_OUTPUT, std::ios_base::app); 
+			
+			//timestamp, lat, lon, x, y\n
+			f << std::fixed << std::setprecision(9) << timestamp << "," << lat << "," << lon << "," << location[0] << "," << location[1] << "\n";
+			f.close();
+		#endif
+
 		/*
 		bool high_motion_flag = false;
 
@@ -117,7 +137,7 @@ void UJSBSimInterface::TickComponent(float DeltaTime, ELevelTick TickType, FActo
 
 	}
 	else {
-		GEngine->AddOnScreenDebugMessage(-1, 10.0f, FColor::Blue, FString::Printf(TEXT("Failed to read")));
+		//GEngine->AddOnScreenDebugMessage(-1, 10.0f, FColor::Blue, FString::Printf(TEXT("Failed to read")));
 	}
 
 	//GEngine->AddOnScreenDebugMessage(-1, 10.0f, FColor::Blue, FString::Printf(TEXT("%.2f, %.2f, %.2f"), loc[0], loc[1], loc[2]));

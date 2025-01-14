@@ -12,8 +12,15 @@
 #include <cstring>
 #include <ctime>
 #include <iostream>
+#include <fstream>
+#include <iomanip>
 #include <chrono>
 #include "Geo.h"
+#include <regex>
+#include <sstream>
+#include <string>
+#include <vector>
+
 
 
 JSBSim::JSBSim(int port, double initial_timestamp){
@@ -58,35 +65,28 @@ JSBSim::JSBSim(int port, double initial_timestamp){
     pitch = 0;
     yaw = 0;
     lat = 0;
-    lon = 0;
+    lon = 0;	
+
+    #ifdef JSB_OUTPUT
+		std::ofstream f;
+		f.open(JSB_OUTPUT);
+		f << "timestamp, roll, pitch, yaw, lat, lon, alt\n";
+		f.close();
+	#endif
 }
 
 
 std::vector<std::string> JSBSim::split(std::string *s, char delim) {
+
+    std::stringstream test(*s);
+
     std::vector<std::string> elems;
+    std::string segment;
 
-    std::string elem;
-    for (char c : *s){
-        if (c==delim){
-            if (elem.empty()){
-                continue;
-            }
-            else{
-                std::remove_if(elem.begin(), elem.end(), isspace);
-                elems.push_back(elem);
-                elem = "";
-            }
-        }
-        else {
-            elem = elem + c;
-        }
-    }
-    if (! elem.empty()){
-        std::remove_if(elem.begin(), elem.end(), isspace);
-        elems.push_back(elem);
+    while(std::getline(test, segment, delim)){
+        elems.push_back(segment);
     }
 
-    //std::cout << "Number of elements: " << elems.size() << std::endl;
     return elems;
 }
 
@@ -117,6 +117,9 @@ int JSBSim::unpack_buffer(){
         first_iter = false;
     }
 
+
+
+
     // About 2 second offset between JSBSim and SITL...ugly I know, but no other clean way to do this
     timestamp = timestamp + _timestamp_offset;
 
@@ -129,6 +132,21 @@ int JSBSim::unpack_buffer(){
     lon = atof(vals[8].c_str());
     lat = atof(vals[9].c_str());
 
+    #ifdef JSB_OUTPUT
+        std::ofstream f;
+        f.open(JSB_OUTPUT, std::ios_base::app); 
+        
+        // timestamp, roll, pitch, yaw, lat, lon, alt, raw
+        f << std::fixed << std::setprecision(9) << timestamp << "," << vals[2] << "," << vals[3] << "," << vals[4] << "," << vals[9] << "," << vals[8] << "," << vals[1] << "\n";
+        f.close();
+
+
+        std::ofstream g;
+        g.open("/tmp/jsb_udb_raw.txt", std::ios_base::app);
+        g << timestamp << "," << s << std::endl;
+        g.close();
+
+    #endif
     // std::cout << "Timestamp: " << timestamp << ", Roll: " << roll << ", Pitch: " << pitch << ", Yaw: " << yaw << ", Lat: " << lat << ", Lon: " << lon << std::endl;
     // std::cout << std::fixed << "Timestamp: " << timestamp << std::endl;
 
@@ -170,5 +188,3 @@ void JSBSim::close(){
 JSBSim::~JSBSim()
 {
 }
-
-

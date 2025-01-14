@@ -13,6 +13,8 @@
 
 #define BUFFERSIZE 1024
 
+// #define JSB_OUTPUT "/tmp/jsbsim_stream.csv"
+
 class JSBSim
 {
 public:
@@ -30,6 +32,7 @@ public:
 	double lat;
 	double lon;
 	double alt;
+
 
 
 private:
