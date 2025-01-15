@@ -8,6 +8,8 @@
 #include <iostream>
 #include <fstream>
 #include <iomanip>
+#include "Components/SceneCaptureComponent2D.h"
+#include "Engine/TextureRenderTarget2D.h"
 
 #include "CesiumGeoreference.h"
 
@@ -25,9 +27,13 @@ UJSBSimInterface::UJSBSimInterface()
 
 	previous_timestamp = 0;
 
-	previous_x_loc = 0;
-	previous_y_loc = 0;
+	aircraft_camera = CreateDefaultSubobject<USceneCaptureComponent2D>(TEXT("aircraft_camera"));
+	aircraft_camera->SetupAttachment(this);
+	aircraft_camera->RegisterComponent();
 
+	aircraft_camera_image_width = 0;
+	aircraft_camera_image_height = 0;
+	aircraft_camera_image_size = 0;
 
 	#ifdef CSV_OUTPUT
 		std::ofstream f;
@@ -37,6 +43,14 @@ UJSBSimInterface::UJSBSimInterface()
 
 	#endif
 	// ...
+}
+
+
+
+bool UJSBSimInterface::GetCameraPixelData(){
+	FTextureRenderTargetResource* RenderTargetResource = aircraft_camera_render_target->GameThread_GetRenderTargetResource();
+	bool bReadSuccess = RenderTargetResource->ReadPixels(aircraft_camera_pixel_data);
+	return bReadSuccess;
 }
 
 
@@ -50,6 +64,15 @@ void UJSBSimInterface::BeginPlay()
 	//UGameplayStatics::GetAllActorsWithTag(GetWorld(), TEXT("DEFAULT_GEOREFERENCE"), geos);
 	UGameplayStatics::GetAllActorsOfClass(GetWorld(), ACesiumGeoreference::StaticClass(), geos);
 
+	//auto actor = this->GetOwner();
+
+	aircraft_camera->TextureTarget = aircraft_camera_render_target;
+
+	//aircraft_camera_image_width = aircraft_camera_render_target->SizeX;
+	//aircraft_camera_image_height = aircraft_camera_render_target->SizeY;
+	//aircraft_camera_image_size = aircraft_camera_image_width * aircraft_camera_image_height;
+
+	aircraft_camera_pixel_data.AddUninitialized(1920*1080);
 
 	if (geos.Num() > 0){
 		this->georeference = (ACesiumGeoreference *)geos[0];
@@ -107,38 +130,20 @@ void UJSBSimInterface::TickComponent(float DeltaTime, ELevelTick TickType, FActo
 			f.close();
 		#endif
 
-		/*
-		bool high_motion_flag = false;
-
-		if (abs(pos.X - previous_x_loc) > 2 ){
-			high_motion_flag = true;
-			GEngine->AddOnScreenDebugMessage(-1, 10.0f, FColor::Red, FString::Printf(TEXT("Previous x loc: %.5f,  Current x loc: %.5f"),  previous_x_loc, pos.X ));
-			GEngine->AddOnScreenDebugMessage(-1, 10.0f, FColor::Red, FString::Printf(TEXT("Lat: %.8f,  Lon: %.8f"),  lat, lon ));
-		}
-
-		if (abs(pos.Y - previous_y_loc) > 2 ){
-			high_motion_flag = true;
-			GEngine->AddOnScreenDebugMessage(-1, 10.0f, FColor::Red, FString::Printf(TEXT("Previous y loc: %.5f,  Current y loc: %.5f"),  previous_y_loc, pos.Y ));
-			GEngine->AddOnScreenDebugMessage(-1, 10.0f, FColor::Red, FString::Printf(TEXT("Lat: %.8f,  Lon: %.8f"),  lat, lon ));
-		}
-		*/
-
-
-		previous_x_loc = pos.X;
-		previous_y_loc = pos.Y;
-
-		//GEngine->AddOnScreenDebugMessage(-1, 10.0f, FColor::Blue, FString::Printf(TEXT("%.5f, %.5f, %.5f"), pos.X, pos.Y, alt ));
-		//GEngine->AddOnScreenDebugMessage(-1, 10.0f, FColor::Blue, FString::Printf(TEXT("%.7f, %.7f"), lat, lon));
-
-		//if (!high_motion_flag){
-			actor->SetActorLocation(location, false);
-			actor->SetActorRotation(rotation);
-		//}
+		actor->SetActorLocation(location, false);
+		actor->SetActorRotation(rotation);
 
 	}
 	else {
 		//GEngine->AddOnScreenDebugMessage(-1, 10.0f, FColor::Blue, FString::Printf(TEXT("Failed to read")));
 	}
+
+	//if(GetCameraPixelData()){
+		//GEngine->AddOnScreenDebugMessage(-1, 10.0f, FColor::Blue, FString::Printf(TEXT("Got Camera Pixel Data")));
+	//}
+	//else {
+		//GEngine->AddOnScreenDebugMessage(-1, 10.0f, FColor::Red, FString::Printf(TEXT("Failed to get Camera Pixel Data")));
+	//}
 
 	//GEngine->AddOnScreenDebugMessage(-1, 10.0f, FColor::Blue, FString::Printf(TEXT("%.2f, %.2f, %.2f"), loc[0], loc[1], loc[2]));
 	// ...

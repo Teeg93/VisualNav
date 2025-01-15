@@ -9,12 +9,14 @@
 #include "JSBSim.h"
 #include "CesiumGeoreference.h"
 
+#include "Components/SceneCaptureComponent2D.h"
+
 #include "JSBSimInterface.generated.h"
 
 // #define CSV_OUTPUT "/tmp/unreal_camera_sim.csv"
 
 UCLASS( ClassGroup=(Custom), meta=(BlueprintSpawnableComponent) )
-class UJSBSimInterface : public UActorComponent
+class UJSBSimInterface : public USceneComponent
 {
 	GENERATED_BODY()
 
@@ -26,6 +28,9 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Time of day") int time_offset_hours;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Time of day") int time_offset_minutes;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Time of day") int time_offset_seconds;
+
+	UPROPERTY(VisibleAnywhere, Category="Components", meta = (AllowPrivateAccess = true))
+	class USceneCaptureComponent2D* aircraft_camera;
 
 protected:
 	// Called when the game starts
@@ -40,8 +45,18 @@ protected:
 	double origin_alt;
 
 	double previous_timestamp;
-	double previous_x_loc = 0;
-	double previous_y_loc = 0;
+
+
+private:
+	// Camera 
+	TArray<FColor> aircraft_camera_pixel_data;
+
+	bool GetCameraPixelData();
+	UTextureRenderTarget2D* aircraft_camera_render_target;
+	int32 aircraft_camera_image_width;
+	int32 aircraft_camera_image_height;
+	int32 aircraft_camera_image_size;
+
 
 public:	
 	// Called every frame
