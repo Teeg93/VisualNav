@@ -20,7 +20,7 @@ AAircraftCamera::AAircraftCamera()
 	ConstructorHelpers::FObjectFinder<UTextureRenderTarget2D> RenderTargetAsset(TEXT("/Script/Engine.TextureRenderTarget2D'/Game/StarterContent/Textures/CameraRenderTarget.CameraRenderTarget'"));
 
 	RenderTarget = DuplicateObject(RenderTargetAsset.Object, NULL);
-	RenderTarget->InitAutoFormat(512, 512);
+	RenderTarget->InitAutoFormat(256, 256);
 	Camera->TextureTarget = RenderTarget;
 
 }
@@ -30,18 +30,20 @@ AAircraftCamera::AAircraftCamera()
 void AAircraftCamera::BeginPlay()
 {
 	Super::BeginPlay();
-	key = ftok("/usr/share/ue5camsim.data", 2);
+	key = ftok("/usr/share/ue5camsim.data", 3);
+
+	std::cout << "Size of ImgDataMsg: " << sizeof(ImgDataMsg) << std::endl;
 	shmid = shmget(key, sizeof(ImgDataMsg), 0666|IPC_CREAT);
 
 	if (shmid == -1){
 		{
-			UE_LOG(LogTemp, Warning, TEXT("ERROR CREATING SHARED MEMORY SEGMENT"));
+			UE_LOG(LogTemp, Warning, TEXT("1 ERROR CREATING SHARED MEMORY SEGMENT"));
 		}
 	}
 	else {
 		data = (uint8_t*)shmat(shmid, NULL, 0);
 		if (data == (void*)-1){
-			UE_LOG(LogTemp, Warning, TEXT("ERROR CREATING SHARED MEMORY SEGMENT"));
+			UE_LOG(LogTemp, Warning, TEXT("2 ERROR CREATING SHARED MEMORY SEGMENT"));
 		}
 	}
 
@@ -67,16 +69,20 @@ void AAircraftCamera::BeginPlay()
 	
 }
 
-void AAircraftCamera::SendImageData(TArray<FColor> &texture_pixels, int size){
+void AAircraftCamera::SendImageData(TArray<FColor> &texture_pixels){
+
 	static u_long msg_id = 0;
 	if(shmid != -1 && data != (void*)-1)
 	{
 		msg_id++;
-		uint8_t* q = (uint8_t*)data;
+		u_long *q = (u_long*)data;
 		*q = msg_id;
 		q++;
-		uint8_t *d = (uint8_t*)q;
-		for (uint8_t i=0; i<size; i++){
+		uint8_t* d = (uint8_t*)q;
+
+		std::cout << "Length of array: " << texture_pixels.Num() << std::endl;
+
+		for (u_long i=0; i<texture_pixels.Num(); i++){
 			*d = texture_pixels[i].R;
 			d++;
 			*d = texture_pixels[i].G;
@@ -101,7 +107,7 @@ void AAircraftCamera::Tick(float DeltaTime)
 
 	if(GetCameraPixelData()) {
 		GEngine->AddOnScreenDebugMessage(-1, 10.0f, FColor::Green, PixelData[100].ToString() );
-		SendImageData(PixelData, CameraImageHeight*CameraImageWidth*3);
+		SendImageData(PixelData);
 	}
 	else {
 		GEngine->AddOnScreenDebugMessage(-1, 10.0f, FColor::Red, FString::Printf(TEXT("Could not get pixel data")));

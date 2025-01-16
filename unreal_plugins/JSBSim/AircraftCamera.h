@@ -24,7 +24,7 @@ protected:
 	virtual void BeginPlay() override;
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 
-	void SendImageData(TArray<FColor> &texture_pixels, int size);
+	void SendImageData(TArray<FColor> &texture_pixels);
 
 
 	TArray<FColor> PixelData;
@@ -44,10 +44,10 @@ protected:
 	uint8_t* data;
 	struct ImgData
 	{
-		unsigned long msg_id=0;
-		uint8_t data[512*512*3];
+		unsigned long msg_id = 0;
+		uint8_t data[256*256*3];
 	}ImgDataMsg;
-	const int ImgDataSz = 512 * 512 * 3;
+	const int ImgDataSz = 256 * 256 * 3;
 
 
 public:	
