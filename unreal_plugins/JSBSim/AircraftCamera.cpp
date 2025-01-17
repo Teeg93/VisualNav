@@ -13,6 +13,8 @@
 #include <iomanip>
 
 #include "CesiumGeoreference.h"
+#include "CesiumCameraManager.h"
+
 #include "Geo.h"
 
 // Sets default values
@@ -24,7 +26,7 @@ AAircraftCamera::AAircraftCamera()
 	RootComponent = CreateDefaultSubobject<USphereComponent>(TEXT("Root"));
 	Camera = CreateDefaultSubobject<USceneCaptureComponent2D>(TEXT("Camera"));
 	Camera->SetupAttachment(RootComponent);
-	Camera->RegisterComponent();
+	//Camera->RegisterComponent();
 
 	ConstructorHelpers::FObjectFinder<UTextureRenderTarget2D> RenderTargetAsset(TEXT("/Script/Engine.TextureRenderTarget2D'/Game/StarterContent/Textures/CameraRenderTarget.CameraRenderTarget'"));
 
@@ -68,12 +70,22 @@ void AAircraftCamera::BeginPlay()
 		this->origin_alt = georeference->GetOriginHeight();
 
 		GEngine->AddOnScreenDebugMessage(-1, 10.0f, FColor::Blue, FString::Printf(TEXT("%.2f, %.2f, %.2f"), origin_lat, origin_lon, origin_alt ));
-
-
 	}
 	else {
 		GEngine->AddOnScreenDebugMessage(-1, 10.0f, FColor::Red, FString::Printf(TEXT("Warning: Could not find GeoReference")));
 	}
+
+	TArray<AActor*> player_cameras;
+	//UGameplayStatics::GetAllActorsWithTag(GetWorld(), TEXT("DEFAULT_GEOREFERENCE"), geos);
+	UGameplayStatics::GetAllActorsOfClass(GetWorld(), APlayerCameraManager::StaticClass(), player_cameras);
+	if (geos.Num() > 0){
+		this->player_camera_manager = player_cameras[0];
+		GEngine->AddOnScreenDebugMessage(-1, 10.0f, FColor::Green, FString::Printf(TEXT("Camera Found!")));
+	}
+	else {
+		GEngine->AddOnScreenDebugMessage(-1, 10.0f, FColor::Red, FString::Printf(TEXT("Warning: Could not find Cesium Camera Manager")));
+	}
+
 
 
 	// Setup Shared Memory //
@@ -150,7 +162,7 @@ void AAircraftCamera::Tick(float DeltaTime)
 	Super::Tick(DeltaTime);
 
 	if(GetCameraPixelData()) {
-		GEngine->AddOnScreenDebugMessage(-1, 10.0f, FColor::Green, PixelData[100].ToString() );
+		//GEngine->AddOnScreenDebugMessage(-1, 10.0f, FColor::Green, PixelData[100].ToString() );
 		SendImageData(PixelData);
 	}
 	else {
@@ -159,6 +171,7 @@ void AAircraftCamera::Tick(float DeltaTime)
 
 
 	auto actor = this;
+	auto root = this->GetRootComponent();
 
 	FVector loc = actor->GetActorLocation();
 
@@ -191,10 +204,10 @@ void AAircraftCamera::Tick(float DeltaTime)
 		actor->SetActorLocation(location, false);
 		actor->SetActorRotation(rotation);
 
-		RootComponent->SetActorLocation(location, false);
-		RootComponent->SetActorRotation(rotation);
-
-
+		if (player_camera_manager){
+			player_camera_manager->SetActorLocation(location, false);
+			player_camera_manager->SetActorRotation(actor->GetActorRotation());
+		}
 
 	}
 	else {

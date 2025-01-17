@@ -30,6 +30,7 @@ protected:
 
 	// Members for JSBSim
 	ACesiumGeoreference * georeference;
+	AActor * player_camera_manager;
 	JSBSim * jsbsim;
 
 	double origin_lat;
