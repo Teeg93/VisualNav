@@ -15,6 +15,9 @@
 #include "CesiumGeoreference.h"
 #include "CesiumCameraManager.h"
 
+//#include "Camera/CameraComponent.h"
+
+
 #include "Geo.h"
 
 // Sets default values
@@ -24,8 +27,10 @@ AAircraftCamera::AAircraftCamera()
 	PrimaryActorTick.bCanEverTick = true;
 
 	RootComponent = CreateDefaultSubobject<USphereComponent>(TEXT("Root"));
+
 	Camera = CreateDefaultSubobject<USceneCaptureComponent2D>(TEXT("Camera"));
 	Camera->SetupAttachment(RootComponent);
+
 	//Camera->RegisterComponent();
 
 	ConstructorHelpers::FObjectFinder<UTextureRenderTarget2D> RenderTargetAsset(TEXT("/Script/Engine.TextureRenderTarget2D'/Game/StarterContent/Textures/CameraRenderTarget.CameraRenderTarget'"));
@@ -171,7 +176,6 @@ void AAircraftCamera::Tick(float DeltaTime)
 
 
 	auto actor = this;
-	auto root = this->GetRootComponent();
 
 	FVector loc = actor->GetActorLocation();
 
@@ -204,10 +208,6 @@ void AAircraftCamera::Tick(float DeltaTime)
 		actor->SetActorLocation(location, false);
 		actor->SetActorRotation(rotation);
 
-		if (player_camera_manager){
-			player_camera_manager->SetActorLocation(location, false);
-			player_camera_manager->SetActorRotation(actor->GetActorRotation());
-		}
 
 	}
 	else {

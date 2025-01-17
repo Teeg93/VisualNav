@@ -8,6 +8,7 @@
 #include "sys/shm.h"
 #include "JSBSim.h"
 #include "CesiumGeoreference.h"
+//#include "Camera/CameraComponent.h"
 
 #include "AircraftCamera.generated.h"
 
