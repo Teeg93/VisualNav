@@ -6,8 +6,14 @@
 #include "Runtime/Engine/Classes/Engine/TextureRenderTarget2D.h"
 #include "Components/SphereComponent.h"
 #include "Components/SceneCaptureComponent2D.h"
+#include "Kismet/GameplayStatics.h"
 #include "PixelFormat.h"
 #include <iostream>
+#include <fstream>
+#include <iomanip>
+
+#include "CesiumGeoreference.h"
+#include "Geo.h"
 
 // Sets default values
 AAircraftCamera::AAircraftCamera()
@@ -32,17 +38,51 @@ AAircraftCamera::AAircraftCamera()
 
 	Camera->TextureTarget = RenderTarget;
 
+	port=8000;
+	#ifdef CSV_OUTPUT
+		std::ofstream f;
+		f.open(CSV_OUTPUT);
+		f << "timestamp, lat, lon, x, y\n";
+		f.close();
+
+	#endif
 }
 
 
 // Called when the game starts or when spawned
 void AAircraftCamera::BeginPlay()
 {
-	Super::BeginPlay();
-	key = ftok("/usr/share/ue5camsim.data", 2);
+	Super::BeginPlay();	
+
+	// Setup JSBSim interface //
+	jsbsim = new JSBSim(port, 0);
+	TArray<AActor*> geos;
+	//UGameplayStatics::GetAllActorsWithTag(GetWorld(), TEXT("DEFAULT_GEOREFERENCE"), geos);
+	UGameplayStatics::GetAllActorsOfClass(GetWorld(), ACesiumGeoreference::StaticClass(), geos);
+	if (geos.Num() > 0){
+		this->georeference = (ACesiumGeoreference *)geos[0];
+		GEngine->AddOnScreenDebugMessage(-1, 10.0f, FColor::Green, FString::Printf(TEXT("Georeference found")));
+
+		this->origin_lat = georeference->GetOriginLatitude();
+		this->origin_lon = georeference->GetOriginLongitude();
+		this->origin_alt = georeference->GetOriginHeight();
+
+		GEngine->AddOnScreenDebugMessage(-1, 10.0f, FColor::Blue, FString::Printf(TEXT("%.2f, %.2f, %.2f"), origin_lat, origin_lon, origin_alt ));
+
+
+	}
+	else {
+		GEngine->AddOnScreenDebugMessage(-1, 10.0f, FColor::Red, FString::Printf(TEXT("Warning: Could not find GeoReference")));
+	}
+
+
+	// Setup Shared Memory //
+
+	key = ftok("/usr/share/ue5camsim.data", 10);
 
 	// The size is the image + an 8 byte u_long for message indexing
-	shmid = shmget(key, image_size_x * image_size_y * 3 + 16, 0666|IPC_CREAT);
+	//shmid = shmget(key, image_size_x * image_size_y * 3 + 16, 0666|IPC_CREAT);
+	shmid = shmget(key, 1920 * 1080 * 3 + 16, 0666|IPC_CREAT);
 
 	if (shmid == -1){
 		{
@@ -117,6 +157,50 @@ void AAircraftCamera::Tick(float DeltaTime)
 		GEngine->AddOnScreenDebugMessage(-1, 10.0f, FColor::Red, FString::Printf(TEXT("Could not get pixel data")));
 	}
 
+
+	auto actor = this;
+
+	FVector loc = actor->GetActorLocation();
+
+	int ret = jsbsim->recv();
+	if (ret >= 0 && jsbsim->timestamp > previous_timestamp){
+		double pitch = jsbsim->pitch;
+		double roll = jsbsim->roll;
+		double yaw = jsbsim->yaw;
+		double lat = jsbsim->lat;
+		double lon = jsbsim->lon;
+		double alt = jsbsim->alt;
+		double timestamp = jsbsim->timestamp;
+		previous_timestamp = timestamp;
+
+
+		FVector2D pos = get_xy_offset_from_origin(origin_lat, origin_lon, lat, lon);
+
+		FVector3d location = {pos.X * 100.0, -pos.Y * 100.0, alt * 100.0};
+		FRotator rotation = {-roll, yaw, pitch };
+
+		#ifdef CSV_OUTPUT
+			std::ofstream f;
+			f.open(CSV_OUTPUT, std::ios_base::app); 
+			
+			//timestamp, lat, lon, x, y\n
+			f << std::fixed << std::setprecision(9) << timestamp << "," << lat << "," << lon << "," << location[0] << "," << location[1] << "\n";
+			f.close();
+		#endif
+
+		actor->SetActorLocation(location, false);
+		actor->SetActorRotation(rotation);
+
+		RootComponent->SetActorLocation(location, false);
+		RootComponent->SetActorRotation(rotation);
+
+
+
+	}
+	else {
+		GEngine->AddOnScreenDebugMessage(-1, 10.0f, FColor::Blue, FString::Printf(TEXT("Failed to read JSBSim Data")));
+	}
+
 }
 
 void AAircraftCamera::EndPlay(const EEndPlayReason::Type EndPlayReason){
@@ -124,4 +208,5 @@ void AAircraftCamera::EndPlay(const EEndPlayReason::Type EndPlayReason){
 
 	// Shutdown shared memory
 	shmdt(data);
+	jsbsim->close();
 }
