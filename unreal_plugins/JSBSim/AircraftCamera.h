@@ -29,25 +29,19 @@ protected:
 
 	TArray<FColor> PixelData;
 	bool GetCameraPixelData();
+
+	UPROPERTY(VisibleAnywhere, Category="Components", meta = (AllowPrivateAccess = true))
 	USceneCaptureComponent2D *Camera;
+
 	UTextureRenderTarget2D *RenderTarget;
 	UTexture2D *Texture2D;
 
-	int image_size_x;
-	int image_size_y;
-
-	int CameraImageWidth;
-	int CameraImageHeight;
+	int32_t image_size_x;
+	int32_t image_size_y;
 
 	key_t key;
 	int shmid;
 	uint8_t* data;
-	struct ImgData
-	{
-		unsigned long msg_id = 0;
-		uint8_t data[256*256*3];
-	}ImgDataMsg;
-	const int ImgDataSz = 256 * 256 * 3;
 
 
 public:	

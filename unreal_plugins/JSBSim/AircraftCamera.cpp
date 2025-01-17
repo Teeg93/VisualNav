@@ -6,6 +6,7 @@
 #include "Runtime/Engine/Classes/Engine/TextureRenderTarget2D.h"
 #include "Components/SphereComponent.h"
 #include "Components/SceneCaptureComponent2D.h"
+#include "PixelFormat.h"
 #include <iostream>
 
 // Sets default values
@@ -16,11 +17,19 @@ AAircraftCamera::AAircraftCamera()
 
 	RootComponent = CreateDefaultSubobject<USphereComponent>(TEXT("Root"));
 	Camera = CreateDefaultSubobject<USceneCaptureComponent2D>(TEXT("Camera"));
+	Camera->SetupAttachment(RootComponent);
+	Camera->RegisterComponent();
 
 	ConstructorHelpers::FObjectFinder<UTextureRenderTarget2D> RenderTargetAsset(TEXT("/Script/Engine.TextureRenderTarget2D'/Game/StarterContent/Textures/CameraRenderTarget.CameraRenderTarget'"));
 
 	RenderTarget = DuplicateObject(RenderTargetAsset.Object, NULL);
-	RenderTarget->InitAutoFormat(256, 256);
+
+	image_size_x = RenderTargetAsset.Object->GetSurfaceWidth();
+	image_size_y = RenderTargetAsset.Object->GetSurfaceHeight();
+
+	//RenderTarget->InitCustomFormat(image_size_x, image_size_y, RenderTargetAsset.Object->GetFormat(), false);
+	RenderTarget->InitAutoFormat(image_size_x, image_size_y);
+
 	Camera->TextureTarget = RenderTarget;
 
 }
@@ -30,10 +39,10 @@ AAircraftCamera::AAircraftCamera()
 void AAircraftCamera::BeginPlay()
 {
 	Super::BeginPlay();
-	key = ftok("/usr/share/ue5camsim.data", 3);
+	key = ftok("/usr/share/ue5camsim.data", 2);
 
-	std::cout << "Size of ImgDataMsg: " << sizeof(ImgDataMsg) << std::endl;
-	shmid = shmget(key, sizeof(ImgDataMsg), 0666|IPC_CREAT);
+	// The size is the image + an 8 byte u_long for message indexing
+	shmid = shmget(key, image_size_x * image_size_y * 3 + 16, 0666|IPC_CREAT);
 
 	if (shmid == -1){
 		{
@@ -48,25 +57,10 @@ void AAircraftCamera::BeginPlay()
 	}
 
 	Camera->TextureTarget = RenderTarget;
-
-	int X = RenderTarget->GetSurfaceHeight();
-	int Y = RenderTarget->GetSurfaceWidth();
-
 	Texture2D = RenderTarget->ConstructTexture2D(this, FString("Tex2D"), EObjectFlags::RF_NoFlags);
 
-	int xx = Texture2D->GetSizeX();
-	int yy = Texture2D->GetSizeY();
+	PixelData.AddUninitialized(image_size_x * image_size_y);
 
-	image_size_x = xx;
-	image_size_y = yy;
-
-	int size=X*Y;
-	PixelData.AddUninitialized(size);
-
-
-	CameraImageWidth = RenderTarget->SizeX;
-	CameraImageHeight = RenderTarget->SizeY;
-	
 }
 
 void AAircraftCamera::SendImageData(TArray<FColor> &texture_pixels){
@@ -74,11 +68,21 @@ void AAircraftCamera::SendImageData(TArray<FColor> &texture_pixels){
 	static u_long msg_id = 0;
 	if(shmid != -1 && data != (void*)-1)
 	{
+		/* Pack the message ID as the first 8 bytes (64 bit unsigned integer)*/
 		msg_id++;
 		u_long *q = (u_long*)data;
 		*q = msg_id;
 		q++;
-		uint8_t* d = (uint8_t*)q;
+
+		/* Pack the x and y image size as 32 bit integers */
+		int32_t *p = (int32_t*)q;
+		*p = (int32_t)image_size_x;
+		p++;
+		*p = (int32_t)image_size_y;
+		p++;
+
+		/* Back to uint8_t format */
+		uint8_t* d = (uint8_t*)p;
 
 		std::cout << "Length of array: " << texture_pixels.Num() << std::endl;
 
