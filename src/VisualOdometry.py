@@ -61,7 +61,7 @@ default_config = {
     "image_height_pixels": 1080,
     "camera_roll": 0,
     "camera_pitch": 0,
-    "camera_yaw": 180
+    "camera_yaw": 90
 }
 
 CAMERA_ID = args.camera_id
@@ -152,62 +152,76 @@ class NavigationController:
 
         return R_c_n
 
-    def compute_world_location(self, K, R, T, x):
+    def compute_world_location(self, K, R, alt, x):
 
-        X = R.T @ np.linalg.inv(K) @ x - R.T @ T
-        alpha = T[2] / X[0,2]
+        X = R.T @ np.linalg.inv(K) @ x
+        alpha = alt / X[0,2]
         X = alpha * X
-        return alpha, X
+        return X
     
-    def compute_aircraft_translation(self, K, R, X, omega, x0, x1, dt, alpha):
-        udot = (x1[0] - x0[0]) / 2
-        vdot = (x1[1] - x0[1]) / 2
-        xdot = [udot, vdot, 0]
-
-        rate_matrix = np.array([[0, -omega[2], omega[1]], [omega[2], 0, -omega[0]], [-omega[1], omega[0], 0]])
-
-        Tdot = alpha * np.linalg.inv(K) @ xdot - (rate_matrix @ R @ X.T).flatten()
-        return Tdot
-
-
-
-
     def run(self):
         last_frame_time = 0
 
         while True:
             frame = self.camera_instance.drain_last_frame()
-            self.T[2] = self.mav_data.agl
-            omega = [self.mav_data.rollspeed, self.mav_data.pitchspeed, self.mav_data.yawspeed]
+            if frame is None:
+                time.sleep(0.01)
+                continue
+
+            R_c_n = self.get_camera_rotation_matrix()
+            agl = self.mav_data.agl
+
+            if (0 in [self.mav_data.roll, self.mav_data.pitch, self.mav_data.yaw]):
+                print("Waiting for attitude data")
+                continue
+            if agl == 0:
+                print("Waiting for AGL data")
+                continue
+
+            display_frame = self.of.pass_frame(frame, R_c_n, agl)
+
             dt = time.time() - last_frame_time
             last_frame_time = time.time()
 
-            if self.T[2] == 0:
-                continue
-            R_c_n = self.get_camera_rotation_matrix()
 
             if frame is None:
                 time.sleep(0.01)
                 continue
 
-            x_vels = []
-            y_vels = []
+
+            dxs = []
+            dys = []
+            dts = []
             for t in self.of.tracks:
                 if len(t) > 1:
-                    u0, v0 = t[0]
-                    u1, v1 = t[1]
+                    u0, v0, R0, agl0, t0 = t[0]
+                    u1, v1, R1, agl1, t1 = t[-1]
+
                     x0 = np.array([u0, v0, 1])
                     x1 = np.array([u1, v1, 1])
 
-                    alpha, X = self.compute_world_location(intrinsic_matrix, R_c_n, self.T, x0)
-                    Tdot = self.compute_aircraft_translation(intrinsic_matrix, R_c_n, X, omega, x0, x1, dt, alpha)
+                    X0 = self.compute_world_location(intrinsic_matrix, R0, agl0, x0)
+                    X1 = self.compute_world_location(intrinsic_matrix, R1, agl1, x1)
 
-                    x_vels.append(Tdot[0,0])
-                    y_vels.append(Tdot[0,1])
+                    # Negative because we computed the world motion, not the aircraft motion
+                    dx = -(X1[0,0] - X0[0,0])
+                    dy = -(X1[0,1] - X0[0,1])
 
-            print(f"Velocity: ({np.mean(x_vels)}, {np.mean(y_vels)})")
+                    dxs.append(dx)
+                    dys.append(dy)
+                    dts.append(t1 - t0)
 
-            display_frame = self.of.pass_frame(frame)
+            if len(dxs)>0 and len(dys)>0 and len(dts)>0:
+                mean_dx = np.mean(dxs)
+                mean_dy = np.mean(dys)
+                mean_dt = np.mean(dts)
+
+                x_vel = mean_dx / mean_dt
+                y_vel = mean_dy / mean_dt
+
+                print(f"Velocity: {x_vel:.2f}, {y_vel:.2f}")
+
+
             cv2.imshow("frame", display_frame)
             cv2.waitKey(1)
 

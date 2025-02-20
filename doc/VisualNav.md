@@ -61,40 +61,13 @@ Z \\
 \end{equation}
 $$
 
-We can separate $\mathbf{T}$ from this equation, and isolate it to give:
+If we set \mathbf{T} to 0, such that the coordinate system is centred on the aircraft, we can simplify to give:
 $$
-\mathbf{T} =  \mathbf{K}^{-1} ( \alpha \mathbf{x} - \mathbf{K} \mathbf{R} \mathbf{X})
+\alpha \mathbf{x} = \mathbf{K}\mathbf{R}\mathbf{X}
 $$
-where we have dropped the 1 from bottom row of the vector $\mathbf{X}$ to give it dimension [3x1]. The matrices $\mathbf{T}$, $\mathbf{x}$ and $\mathbf{R}$ are implicitly functions of time. The intrinsics matrix $\mathbf{K}$ is fixed, thus is time invariant. We also assume that the world points which we are observing are fixed and not moving in the scene, so the vector $\mathbf{X}$ is also time invariant. To be more explicit about this, we can expand, simplify and write it as:
+where we have dropped the 1 from bottom row of the vector $\mathbf{X}$ to give it dimension [3x1]. 
+The vector $\mathbf{x}$ and matrix $\mathbf{R}$ are implicitly functions of time. The intrinsics matrix $\mathbf{K}$ is fixed, thus is time invariant. We also assume that the aircraft is fixed in space, and the world is moving beneath it. In reality the opposite is true, but we can account for this simply by inverting the sign of the result. We can find the point $\mathbf{X}$ by multiplying by $\mathbf{KR}^{-1}$ on both sides
 $$
-\mathbf{T}(t) = \alpha\ \mathbf{K}^{-1} \mathbf{x}(t) - \mathbf{R}(t) \mathbf{X}
+\mathbf{X} = \alpha \mathbf{(KR)}^{-1} \mathbf{x}
 $$
-
-
- Taking the time derivative of both sides, we get:
-$$
-\begin{equation}
-\tag{2}
-\mathbf{\dot{T}} = \alpha \mathbf{K}^{-1} \mathbf{\dot{x}} - \mathbf{\dot{R}} \mathbf{X}
-\end{equation}
-$$
-
-The time derivative of a rotation matrix is given by 
-
-$$
-\mathbf{\dot{R}} = 
-[\bm{\omega}]_{\times} \mathbf{R}(t)\ \ \ ; \ \ \ 
-
-[\bm{\omega}]_{\times} = 
-\begin{bmatrix}
-0         & -\omega_z & \omega_y  \\
-\omega_z  & 0         & -\omega_x \\
--\omega_y & \omega_x  & 0
-\end{bmatrix}
-$$
-where $[\bm{\omega}]_{\times}$ is the skew-symmetric rate matrix, as measured by the gyroscope. Note that the gyroscope measures the rate of the aircraft, so this measurement must first be converted from the aircraft frame to the camera frame (typically by a time-invariant rotation matrix). 
-
-Our interest is in solving equation (2) to estimate the rate of translation vector $\mathbf{\dot{T}}$. Lucky for us, many of these variables are already known. 
-It is possible to infer the location of an observed point $\mathbf{X}$. 
-We assume that the altitude of the aircraft above the ground is known (either by barometric altitude & terrain mapping, or by LiDAR), thus $T_z$ is known. In aerial applications, we assume that the observed tracking point is on the ground, and therefore $Z$ is equal to 0. The rotation $\mathbf{R}$ of the camera system is estimated from the onboard AHRS, thus all elements $R_i$ are known. The time derivative of $\mathbf{x}$ can be observed across sequential frames, simply given by $\dot{u} = (u_{\tau} - u_{t}) / (\tau - t)$ and $\dot{v} = (v_{\tau} - v_{t}) / (\tau - t)$. It can be seen in equation (1) that the scalar $\alpha$ is equal to the bottom row of the equation, for which all variables are known. The intrinsic matrix $\mathbf{K}$ is computed during the calibration process. 
-Therefore the instantaneous velocity of the camera $\mathbf{\dot{T}}$ can be estimated from the translational velocity of a pixel across the image plane.
+The scale factor $\alpha$ can be computed with knowledge of the aircraft's altitude above ground level. We find alpha such that the third element of $\alpha \mathbf{KR}^{-1}\mathbf{x}$ is equal to the altitude AGL. Therefore, the ground displacement can be measured directly, by computing $\mathbf{X}$ at two different points in time from the same tracking point. 

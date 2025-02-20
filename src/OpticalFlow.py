@@ -1,5 +1,11 @@
 import cv2
 import numpy as np
+import time
+
+
+class Track:
+    def __init__(self):
+        pass
 
 class OpticalFlow:
     def __init__(self, redetection_interval=5, maximum_track_len=3, point_mask_radius=5, minimum_tracks=50):
@@ -28,15 +34,16 @@ class OpticalFlow:
                               maxLevel=2,
                               criteria=(cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, 10, 0.03))
 
-    def pass_frame(self, frame):
+    def pass_frame(self, frame, R, agl):
 
         display_frame = frame.copy()
         frame_grayscale = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        now = time.time()
 
         if len(self.tracks) > 0:
             img0, img1 = self.previous_frame, frame_grayscale
 
-            p0 = np.float32([tr[-1] for tr in self.tracks]).reshape(-1, 1, 2)
+            p0 = np.float32([tr[-1][0:2] for tr in self.tracks]).reshape(-1, 1, 2)
             p1, st, err = cv2.calcOpticalFlowPyrLK(img0, img1, p0, None, **self.lk_params)
             p0r, st, err = cv2.calcOpticalFlowPyrLK(img1, img0, p1, None, **self.lk_params)
             d = abs(p0 - p0r).reshape(-1, 2).max(-1)
@@ -45,27 +52,33 @@ class OpticalFlow:
             for tr, (x, y), good_flag in zip(self.tracks, p1.reshape(-1, 2), good):
                 if not good_flag:
                     continue
-                tr.append((x, y))
+                tr.append((x, y, R, agl, now))
                 if len(tr) > self.maximum_track_len:
                     del tr[0]
                 new_tracks.append(tr)
                 cv2.circle(display_frame, (int(x), int(y)), 4, (0, 255, 255), -1)
+            
+
             self.tracks = new_tracks
-            cv2.polylines(display_frame, [np.int32(tr) for tr in self.tracks], False, (0, 255, 0), thickness=2)
+
+            polylines = [[(t[0], t[1]) for t in tr] for tr in self.tracks ]
+            polylines = [np.int32(t) for t in polylines]
+            cv2.polylines(display_frame, polylines, False, (0, 255, 0), thickness=2)
 
         if (self.frame_idx % self.redetection_interval == 0) or (len(self.tracks) < self.minimum_num_tracks):
             # Ignore black/white
             mask = cv2.inRange(frame_grayscale, 1, 254)
 
             # Ignore existing tracking points
-            for x, y in [np.int32(tr[-1]) for tr in self.tracks]:
+            for x, y in [np.int32((tr[-1][0], tr[-1][1])) for tr in self.tracks]:
                 cv2.circle(mask, (x, y), self.point_mask_radius, 0, -1)
 
             p = cv2.goodFeaturesToTrack(frame_grayscale, mask=mask, **self.feature_params)
 
             if p is not None:
                 for x, y in np.float32(p).reshape(-1, 2):
-                    self.tracks.append([(x, y)])
+                    self.tracks.append([(x, y, R, agl, now)])
 
         self.previous_frame = frame_grayscale
+
         return display_frame
