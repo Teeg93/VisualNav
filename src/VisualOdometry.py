@@ -45,16 +45,19 @@ parser.add_argument('-m', '--secondary-camera-id', type=str, required=False, hel
 parser.add_argument('-t', '--max-n-tracks', type=int, required=False, default=20,
                     help="Maximum number of ground tracking points")
 
+
 parser.add_argument('-g', '--graph', action='store_true', help="Enable graphs")
 parser.add_argument('-d', '--display', action='store_true', help="Enable video display")
-parser.add_argument('-r', '--record-video', action='store_true', help="Record video if enabled")
 parser.add_argument('-e', '--server', action='store_true', help="Enables server if set")
 parser.add_argument('--sitl', action='store_true', help="Use SITL instead of Serial interface")
+parser.add_argument('-r', '--record-video', action='store_true', help="Record video")
+parser.add_argument('--rerun', action='store_true', help="Enable rerun")
 
 
 VERSION = "1.0.0"
 
 args = parser.parse_args()
+
 
 default_config = {
     "image_width_pixels": 1920,
@@ -71,6 +74,12 @@ MAV_SERIAL_BAUDRATE = args.baudrate
 GRAPH = args.graph
 DISPLAY = args.display
 RECORD = args.record_video
+RERUN_ENABLED = args.rerun
+
+if RERUN_ENABLED:
+    import rerun as rr
+    rr.init("Visual Odometry")
+    rr.connect_tcp()
 
 # Load camera calibration
 CAMERA_CALIBRATION = os.path.join(args.calibration_directory, "camera_calibration.json")
@@ -221,9 +230,21 @@ class NavigationController:
 
                 print(f"Velocity: {x_vel:.2f}, {y_vel:.2f}")
 
+                if RERUN_ENABLED:
+                    mav_velocity_x = self.mav_data.groundspeed * np.cos(np.radians(self.mav_data.groundcourse))
+                    mav_velocity_y = self.mav_data.groundspeed * np.sin(np.radians(self.mav_data.groundcourse))
+
+                    rr.log("/velocity/x/groundtruth", rr.Scalar(mav_velocity_x))
+                    rr.log("/velocity/y/groundtruth", rr.Scalar(mav_velocity_y))
+
+                    rr.log("/velocity/x/visual_nav", rr.Scalar(x_vel))
+                    rr.log("/velocity/y/visual_nav", rr.Scalar(y_vel))
+
+
 
             cv2.imshow("frame", display_frame)
             cv2.waitKey(1)
+
 
 
 
