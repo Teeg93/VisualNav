@@ -11,6 +11,7 @@ from FlightUtils.utils import *
 from FlightUtils.Capture.FlightCapture import FlightCapture
 from FlightUtils.Mavlink.MavlinkHandler import MavlinkHandler
 from FlightUtils.Server.FlightServer import run as run_flight_server
+from OpticalFlow import OpticalFlow
 
 def loadCameraCalibration(filepath):
     try:
@@ -125,6 +126,8 @@ class NavigationController:
         self.camera_instance = self.fc.getCameraInstance(CAMERA_ID)
         self.mav_data = self.camera_instance.mavlink_data
 
+        self.of = OpticalFlow(point_mask_radius=100, maximum_track_len=10)
+
 
     def run(self):
         while True:
@@ -133,7 +136,8 @@ class NavigationController:
                 time.sleep(0.01)
                 continue
 
-            cv2.imshow("frame", frame)
+            display_frame = self.of.pass_frame(frame)
+            cv2.imshow("frame", display_frame)
             cv2.waitKey(1)
 
 

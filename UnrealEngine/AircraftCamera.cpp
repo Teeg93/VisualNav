@@ -45,6 +45,9 @@ AAircraftCamera::AAircraftCamera()
 
 	Camera->TextureTarget = RenderTarget;
 
+	// Limit to 20Hz
+	PrimaryActorTick.TickInterval = 0.03333f;
+
 	port=8000;
 	#ifdef CSV_OUTPUT
 		std::ofstream f;
