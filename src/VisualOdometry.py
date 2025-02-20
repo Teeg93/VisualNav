@@ -12,6 +12,7 @@ from FlightUtils.Capture.FlightCapture import FlightCapture
 from FlightUtils.Mavlink.MavlinkHandler import MavlinkHandler
 from FlightUtils.Server.FlightServer import run as run_flight_server
 from OpticalFlow import OpticalFlow
+from helpers import *
 
 def loadCameraCalibration(filepath):
     try:
@@ -58,6 +59,9 @@ args = parser.parse_args()
 default_config = {
     "image_width_pixels": 1920,
     "image_height_pixels": 1080,
+    "camera_roll": 0,
+    "camera_pitch": 0,
+    "camera_yaw": 180
 }
 
 CAMERA_ID = args.camera_id
@@ -96,6 +100,13 @@ with open(VISUAL_NAV_CONFIG, 'r') as f:
 
     IMAGE_WIDTH = int(dat['image_width_pixels'])
     IMAGE_HEIGHT = int(dat['image_height_pixels'])
+    CAMERA_ROLL = float(dat['camera_roll'])
+    CAMERA_PITCH = float(dat['camera_pitch'])
+    CAMERA_YAW = float(dat['camera_yaw'])
+
+# Aircraft to camera rotation matrix
+R_c_a = buildRotationMatrix(CAMERA_ROLL, CAMERA_PITCH, CAMERA_YAW, degrees=True)
+
 
 if update:
     with open(VISUAL_NAV_CONFIG, 'w') as f:
@@ -128,13 +139,43 @@ class NavigationController:
 
         self.of = OpticalFlow(point_mask_radius=100, maximum_track_len=10)
 
+        self.T = np.array([0, 0, 0])
+
+
+    def get_camera_rotation_matrix(self):
+
+        # Rotation matrix - NED - aircraft frame
+        R_a_n = buildRotationMatrix(self.mav_data.roll, self.mav_data.pitch, self.mav_data.yaw, degrees=False)
+
+        # Rotation matrix of camera in NED frame
+        R_c_n = R_c_a @ R_a_n
+
+        return R_c_n
+
+    def compute_world_location(self, K, R, T, x):
+
+        X = np.linalg.inv(K @ R) @ (x - T)
+        breakpoint()
+
+
 
     def run(self):
         while True:
             frame = self.camera_instance.drain_last_frame()
+            self.T[2] = self.mav_data.agl
+            if self.T[2] == 0:
+                continue
+            R_c_n = self.get_camera_rotation_matrix()
+
             if frame is None:
                 time.sleep(0.01)
                 continue
+
+            for t in self.of.tracks:
+                u, v = t[0]
+                x = np.array([u, v, 1])
+                self.compute_world_location(intrinsic_matrix, R_c_n, self.T, x)
+
 
             display_frame = self.of.pass_frame(frame)
             cv2.imshow("frame", display_frame)
