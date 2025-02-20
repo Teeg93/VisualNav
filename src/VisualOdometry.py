@@ -154,15 +154,34 @@ class NavigationController:
 
     def compute_world_location(self, K, R, T, x):
 
-        X = np.linalg.inv(K @ R) @ (x - T)
-        breakpoint()
+        X = R.T @ np.linalg.inv(K) @ x - R.T @ T
+        alpha = T[2] / X[0,2]
+        X = alpha * X
+        return alpha, X
+    
+    def compute_aircraft_translation(self, K, R, X, omega, x0, x1, dt, alpha):
+        udot = (x1[0] - x0[0]) / 2
+        vdot = (x1[1] - x0[1]) / 2
+        xdot = [udot, vdot, 0]
+
+        rate_matrix = np.array([[0, -omega[2], omega[1]], [omega[2], 0, -omega[0]], [-omega[1], omega[0], 0]])
+
+        Tdot = alpha * np.linalg.inv(K) @ xdot - (rate_matrix @ R @ X.T).flatten()
+        return Tdot
+
 
 
 
     def run(self):
+        last_frame_time = 0
+
         while True:
             frame = self.camera_instance.drain_last_frame()
             self.T[2] = self.mav_data.agl
+            omega = [self.mav_data.rollspeed, self.mav_data.pitchspeed, self.mav_data.yawspeed]
+            dt = time.time() - last_frame_time
+            last_frame_time = time.time()
+
             if self.T[2] == 0:
                 continue
             R_c_n = self.get_camera_rotation_matrix()
@@ -171,11 +190,22 @@ class NavigationController:
                 time.sleep(0.01)
                 continue
 
+            x_vels = []
+            y_vels = []
             for t in self.of.tracks:
-                u, v = t[0]
-                x = np.array([u, v, 1])
-                self.compute_world_location(intrinsic_matrix, R_c_n, self.T, x)
+                if len(t) > 1:
+                    u0, v0 = t[0]
+                    u1, v1 = t[1]
+                    x0 = np.array([u0, v0, 1])
+                    x1 = np.array([u1, v1, 1])
 
+                    alpha, X = self.compute_world_location(intrinsic_matrix, R_c_n, self.T, x0)
+                    Tdot = self.compute_aircraft_translation(intrinsic_matrix, R_c_n, X, omega, x0, x1, dt, alpha)
+
+                    x_vels.append(Tdot[0,0])
+                    y_vels.append(Tdot[0,1])
+
+            print(f"Velocity: ({np.mean(x_vels)}, {np.mean(y_vels)})")
 
             display_frame = self.of.pass_frame(frame)
             cv2.imshow("frame", display_frame)

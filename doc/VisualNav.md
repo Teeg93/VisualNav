@@ -63,11 +63,11 @@ $$
 
 We can separate $\mathbf{T}$ from this equation, and isolate it to give:
 $$
-\mathbf{T} = \alpha\mathbf{x} - \mathbf{K} \mathbf{R} \mathbf{X}
+\mathbf{T} =  \mathbf{K}^{-1} ( \alpha \mathbf{x} - \mathbf{K} \mathbf{R} \mathbf{X})
 $$
-where we have dropped the 1 from bottom row of the vector $\mathbf{X}$ to give it dimension [3x1]. The matrices $\mathbf{T}$, $\mathbf{x}$ and $\mathbf{R}$ are implicitly functions of time. The intrinsics matrix $\mathbf{K}$ is fixed, thus is time invariant. We also assume that the world points which we are observing are fixed and not moving in the scene, thus the vector $\mathbf{X}$ is also time invariant. To be more explicit about this, we can write it as:
+where we have dropped the 1 from bottom row of the vector $\mathbf{X}$ to give it dimension [3x1]. The matrices $\mathbf{T}$, $\mathbf{x}$ and $\mathbf{R}$ are implicitly functions of time. The intrinsics matrix $\mathbf{K}$ is fixed, thus is time invariant. We also assume that the world points which we are observing are fixed and not moving in the scene, so the vector $\mathbf{X}$ is also time invariant. To be more explicit about this, we can expand, simplify and write it as:
 $$
-\mathbf{T}(t) = \alpha\mathbf{x}(t) - \mathbf{K} \mathbf{R}(t) \mathbf{X}
+\mathbf{T}(t) = \alpha\ \mathbf{K}^{-1} \mathbf{x}(t) - \mathbf{R}(t) \mathbf{X}
 $$
 
 
@@ -75,7 +75,7 @@ $$
 $$
 \begin{equation}
 \tag{2}
-\mathbf{\dot{T}} = \alpha \mathbf{\dot{x}} - \mathbf{K} \mathbf{\dot{R}} \mathbf{X}
+\mathbf{\dot{T}} = \alpha \mathbf{K}^{-1} \mathbf{\dot{x}} - \mathbf{\dot{R}} \mathbf{X}
 \end{equation}
 $$
 
