@@ -78,7 +78,7 @@ RERUN_ENABLED = args.rerun
 
 if RERUN_ENABLED:
     import rerun as rr
-    rr.init("Visual Odometry")
+    rr.init("Visual Odom")
     rr.connect_tcp()
 
 # Load camera calibration
@@ -122,6 +122,43 @@ if update:
         json.dump(dat, f, indent=4)
 
 
+class KalmanFilter:
+    def __init__(self, vx0, vy0, q_vx, q_vy):
+        self.x = [vx0, vy0]
+        self.xhat = self.x
+        self.Q = np.diag([q_vx, q_vy])
+
+        self.F = np.diag([1, 1])
+        self.H = np.diag([1, 1])
+        self.P = self.Q
+        self.y = [0, 0]
+        self.S = np.diag([0, 0])
+    
+    def predict(self):
+        return self.x, self.P + self.Q
+    
+    def update(self, z, R):
+        self.xhat, self.Phat = self.predict()
+
+        self.y = z - self.H @ self.xhat
+        self.S = self.H @ self.Phat @ self.H.T + R
+        self.K = self.Phat @ self.H.T @ np.linalg.inv(self.S)
+        self.x = self.xhat + self.K @ self.y
+        self.P = (np.eye(2) - self.K @ self.H) @ self.Phat
+
+        print(f"Q: {self.Q}")
+        print(f"Phat: {self.Phat}")
+        print(f"y: {self.y}")
+        print(f"S: {self.S}")
+        print(f"K: {self.K}")
+        print(f"x: {self.x}")
+        print(f"P: {self.P}")
+
+        return self.x
+
+
+
+
 class NavigationController:
     csv_header = "frame%video_frame_index%state%timestamp%camera_roll%camera_pitch%camera_yaw\n"
 
@@ -146,7 +183,7 @@ class NavigationController:
         self.camera_instance = self.fc.getCameraInstance(CAMERA_ID)
         self.mav_data = self.camera_instance.mavlink_data
 
-        self.of = OpticalFlow(point_mask_radius=100, maximum_track_len=10)
+        self.of = OpticalFlow(point_mask_radius=100, maximum_track_len=30)
 
         self.T = np.array([0, 0, 0])
 
@@ -170,6 +207,11 @@ class NavigationController:
     
     def run(self):
         last_frame_time = 0
+
+        # Process covariance
+        q_x = 0.1
+        q_y = 0.1
+        self.kf = KalmanFilter(1, 1, q_x, q_y)
 
         while True:
             frame = self.camera_instance.drain_last_frame()
@@ -201,6 +243,8 @@ class NavigationController:
             dxs = []
             dys = []
             dts = []
+            vxs = []
+            vys = []
             for t in self.of.tracks:
                 if len(t) > 1:
                     u0, v0, R0, agl0, t0 = t[0]
@@ -215,18 +259,32 @@ class NavigationController:
                     # Negative because we computed the world motion, not the aircraft motion
                     dx = -(X1[0,0] - X0[0,0])
                     dy = -(X1[0,1] - X0[0,1])
+                    dt = t1-t0
+
 
                     dxs.append(dx)
                     dys.append(dy)
-                    dts.append(t1 - t0)
+                    dts.append(dt)
+                    vxs.append(dx/dt)
+                    vys.append(dy/dt)
 
             if len(dxs)>0 and len(dys)>0 and len(dts)>0:
                 mean_dx = np.mean(dxs)
                 mean_dy = np.mean(dys)
                 mean_dt = np.mean(dts)
 
-                x_vel = mean_dx / mean_dt
-                y_vel = mean_dy / mean_dt
+
+
+                var_x = np.std(vxs)
+                var_y = np.std(vys)
+
+                x_vel = np.mean(vxs)
+                y_vel = np.mean(vys)
+
+                R = np.diag([var_x**2.0, var_y**2.0])
+                z = [x_vel, y_vel]
+                ret = self.kf.update(z, R)
+
 
                 print(f"Velocity: {x_vel:.2f}, {y_vel:.2f}")
 
@@ -239,6 +297,21 @@ class NavigationController:
 
                     rr.log("/velocity/x/visual_nav", rr.Scalar(x_vel))
                     rr.log("/velocity/y/visual_nav", rr.Scalar(y_vel))
+
+                    rr.log("/velocity/x/visual_nav_filtered", rr.Scalar(ret[0]))
+                    rr.log("/velocity/y/visual_nav_filtered", rr.Scalar(ret[1]))
+
+                    print("LOGGED")
+
+                    bins = np.arange(-30, 30, 0.5)
+                    x_vel_hist, edges = np.histogram(vxs, bins=bins)
+                    y_vel_hist, edges = np.histogram(vys, bins=bins)
+
+
+                    rr.log("/velocity/x/histogram", rr.BarChart(x_vel_hist))
+                    rr.log("/velocity/y/histogram", rr.BarChart(y_vel_hist))
+
+
 
 
 
