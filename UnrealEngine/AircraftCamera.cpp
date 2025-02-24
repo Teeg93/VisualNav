@@ -194,7 +194,10 @@ void AAircraftCamera::Tick(float DeltaTime)
 		previous_timestamp = timestamp;
 
 
-		FVector2D pos = get_xy_offset_from_origin(origin_lat, origin_lon, lat, lon);
+		//FVector2D pos = get_xy_offset_from_origin(origin_lat, origin_lon, lat, lon);
+		FVector3d pos = vector_offset_from_origin(origin_lat, origin_lon, origin_alt, lat, lon, alt);
+		//GEngine->AddOnScreenDebugMessage(-1, 10.0f, FColor::Blue, FString::Printf(TEXT("Origin Lat: %.6f, Origin Lon %.6f, Origin Alt %.6f"), origin_lat, origin_lon, origin_alt));
+		//GEngine->AddOnScreenDebugMessage(-1, 10.0f, FColor::Blue, FString::Printf(TEXT("POSITION: %.8f, %.8f, %.8f"), pos[0], pos[1], pos[2]));
 
 		FVector3d location = {pos.X * 100.0, -pos.Y * 100.0, alt * 100.0};
 		FRotator rotation = {-roll, yaw, pitch };

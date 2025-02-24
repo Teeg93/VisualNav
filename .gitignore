@@ -8,3 +8,4 @@ build/*
 unreal_plugins/JSBSim/Binaries/*
 unreal_plugins/JSBSim/Intermediate/Build/*
 unreal_plugins/JSBSim/Intermediate/*
+env/*

@@ -146,6 +146,7 @@ class KalmanFilter:
         self.x = self.xhat + self.K @ self.y
         self.P = (np.eye(2) - self.K @ self.H) @ self.Phat
 
+        """
         print(f"Q: {self.Q}")
         print(f"Phat: {self.Phat}")
         print(f"y: {self.y}")
@@ -153,6 +154,7 @@ class KalmanFilter:
         print(f"K: {self.K}")
         print(f"x: {self.x}")
         print(f"P: {self.P}")
+        """
 
         return self.x
 
@@ -209,8 +211,8 @@ class NavigationController:
         last_frame_time = 0
 
         # Process covariance
-        q_x = 0.1
-        q_y = 0.1
+        q_x = 0.01
+        q_y = 0.01
         self.kf = KalmanFilter(1, 1, q_x, q_y)
 
         while True:
@@ -285,8 +287,9 @@ class NavigationController:
                 z = [x_vel, y_vel]
                 ret = self.kf.update(z, R)
 
+                print("AGL: ", self.mav_data.agl)
 
-                print(f"Velocity: {x_vel:.2f}, {y_vel:.2f}")
+
 
                 if RERUN_ENABLED:
                     mav_velocity_x = self.mav_data.groundspeed * np.cos(np.radians(self.mav_data.groundcourse))
@@ -300,8 +303,6 @@ class NavigationController:
 
                     rr.log("/velocity/x/visual_nav_filtered", rr.Scalar(ret[0]))
                     rr.log("/velocity/y/visual_nav_filtered", rr.Scalar(ret[1]))
-
-                    print("LOGGED")
 
                     bins = np.arange(-30, 30, 0.5)
                     x_vel_hist, edges = np.histogram(vxs, bins=bins)
