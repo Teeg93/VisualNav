@@ -8,6 +8,7 @@
 #include "sys/shm.h"
 #include "JSBSim.h"
 #include "CesiumGeoreference.h"
+#include "CesiumGlobeAnchorComponent.h"
 //#include "Camera/CameraComponent.h"
 
 #include "AircraftCamera.generated.h"
@@ -56,6 +57,8 @@ protected:
 
 	UTextureRenderTarget2D *RenderTarget;
 	UTexture2D *Texture2D;
+
+	UCesiumGlobeAnchorComponent *cesium_globe_anchor;
 
 	int32_t image_size_x;
 	int32_t image_size_y;

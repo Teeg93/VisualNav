@@ -14,6 +14,9 @@
 
 #include "CesiumGeoreference.h"
 #include "CesiumCameraManager.h"
+#include "CesiumGlobeAnchorComponent.h"
+
+#include "Math/Quat.h"
 
 //#include "Camera/CameraComponent.h"
 
@@ -27,6 +30,10 @@ AAircraftCamera::AAircraftCamera()
 	PrimaryActorTick.bCanEverTick = true;
 
 	RootComponent = CreateDefaultSubobject<USphereComponent>(TEXT("Root"));
+
+	cesium_globe_anchor = CreateDefaultSubobject<UCesiumGlobeAnchorComponent>(TEXT("CesiumGlobeAnchor"));	
+	cesium_globe_anchor->SetTeleportWhenUpdatingTransform(true);
+	cesium_globe_anchor->RegisterComponent();
 
 	Camera = CreateDefaultSubobject<USceneCaptureComponent2D>(TEXT("Camera"));
 	Camera->SetupAttachment(RootComponent);
@@ -71,6 +78,8 @@ void AAircraftCamera::BeginPlay()
 	UGameplayStatics::GetAllActorsOfClass(GetWorld(), ACesiumGeoreference::StaticClass(), geos);
 	if (geos.Num() > 0){
 		this->georeference = (ACesiumGeoreference *)geos[0];
+		cesium_globe_anchor->SetGeoreference(this->georeference);	
+
 		GEngine->AddOnScreenDebugMessage(-1, 10.0f, FColor::Green, FString::Printf(TEXT("Georeference found")));
 
 		this->origin_lat = georeference->GetOriginLatitude();
@@ -195,12 +204,17 @@ void AAircraftCamera::Tick(float DeltaTime)
 
 
 		//FVector2D pos = get_xy_offset_from_origin(origin_lat, origin_lon, lat, lon);
-		FVector3d pos = vector_offset_from_origin(origin_lat, origin_lon, origin_alt, lat, lon, alt);
+		//FVector3d pos = vector_offset_from_origin(origin_lat, origin_lon, origin_alt, lat, lon, alt);
+
 		//GEngine->AddOnScreenDebugMessage(-1, 10.0f, FColor::Blue, FString::Printf(TEXT("Origin Lat: %.6f, Origin Lon %.6f, Origin Alt %.6f"), origin_lat, origin_lon, origin_alt));
 		//GEngine->AddOnScreenDebugMessage(-1, 10.0f, FColor::Blue, FString::Printf(TEXT("POSITION: %.8f, %.8f, %.8f"), pos[0], pos[1], pos[2]));
+		//FVector3d location = {pos.X * 100.0, -pos.Y * 100.0, alt * 100.0};
+		//FRotator rotation_esu = {-roll, yaw, pitch };
 
-		FVector3d location = {pos.X * 100.0, -pos.Y * 100.0, alt * 100.0};
-		FRotator rotation = {-roll, yaw, pitch };
+		//FVector rotation_esu = {-roll*RAD_TO_DEG, yaw*RAD_TO_DEG, pitch*RAD_TO_DEG};
+		FVector rotation_esu = {pitch, -roll, yaw};
+		FQuat q = FQuat::MakeFromEuler(rotation_esu);
+
 
 		#ifdef CSV_OUTPUT
 			std::ofstream f;
@@ -211,8 +225,14 @@ void AAircraftCamera::Tick(float DeltaTime)
 			f.close();
 		#endif
 
-		actor->SetActorLocation(location, false);
-		actor->SetActorRotation(rotation);
+		//actor->SetActorLocation(location, false);
+		//actor->SetActorRotation(rotation);
+
+		FVector3d lon_lat_height = {lon, lat, alt};
+		this->cesium_globe_anchor->MoveToLongitudeLatitudeHeight(lon_lat_height);
+		this->cesium_globe_anchor->SnapLocalUpToEllipsoidNormal();
+		this->cesium_globe_anchor->SetEastSouthUpRotation(q);
+
 
 
 	}
