@@ -398,9 +398,12 @@ class NavigationController:
                 if t is not None:
                     t = t / np.mean(dts)
 
-                R = np.array([[var_x**2.0, cov],[cov, var_y**2.0]]) * 2
+                R = np.array([[var_x**2.0, cov],[cov, var_y**2.0]]) * 4
                 z = [x_vel, y_vel]
                 ret = self.kf.update(z, R)
+
+                mavlink_cov = np.array([var_x**2.0/10000, cov/10000, 0, cov/10000, var_y**2.0/10000, 0, 0, 0, 0])
+                self.mv.conn.mav.vision_speed_estimate_send(int(time.time()*1000000), x_vel, y_vel, 0, mavlink_cov, current_frame_idx % 255)
 
 
                 if RERUN_ENABLED:
