@@ -123,19 +123,34 @@ if update:
 
 
 class KalmanFilter:
-    def __init__(self, vx0, vy0, q_vx, q_vy):
-        self.x = [vx0, vy0]
+    def __init__(self, x0, y0, vx0, vy0, q_vx, q_vy):
+        self.x = [x0, y0, vx0, vy0]
         self.xhat = self.x
-        self.Q = np.diag([q_vx, q_vy])
+        self.Q = np.diag([0, 0, q_vx, q_vy])
 
-        self.F = np.diag([1, 1])
-        self.H = np.diag([1, 1])
+        self.H = np.array([[0, 0, 1, 0],[0, 0, 0, 1]])
         self.P = self.Q
         self.y = [0, 0]
-        self.S = np.diag([0, 0])
+        self.S = np.diag([0, 0, 0, 0])
+        self.last_update = time.time()
     
     def predict(self):
-        return self.x, self.P + self.Q
+
+        dt = time.time() - self.last_update
+        self.last_update = time.time()
+
+        x_0 = self.x[0] + dt * self.x[2]
+        x_1 = self.x[1] + dt * self.x[3]
+
+
+        Q = np.zeros((4, 4))
+        Q_upper = self.P[2:4, 2:4] * dt
+        Q[0:2, 0:2] = Q_upper
+        Q[2:4, 2:4] = self.Q[2:4, 2:4]
+        self.Q = Q
+
+
+        return [x_0, x_1, self.x[2], self.x[3]], self.P + self.Q
     
     def update(self, z, R):
         self.xhat, self.Phat = self.predict()
@@ -144,7 +159,8 @@ class KalmanFilter:
         self.S = self.H @ self.Phat @ self.H.T + R
         self.K = self.Phat @ self.H.T @ np.linalg.inv(self.S)
         self.x = self.xhat + self.K @ self.y
-        self.P = (np.eye(2) - self.K @ self.H) @ self.Phat
+
+        self.P = (np.eye(4) - self.K @ self.H) @ self.Phat
 
         """
         print(f"Q: {self.Q}")
@@ -262,9 +278,9 @@ class NavigationController:
         last_frame_time = 0
 
         # Process covariance
-        q_x = 0.1
-        q_y = 0.1
-        self.kf = KalmanFilter(1, 1, q_x, q_y)
+        q_vx = 0.1
+        q_vy = 0.1
+        self.kf = None
 
         while True:
             frame = self.camera_instance.drain_last_frame()
@@ -283,15 +299,21 @@ class NavigationController:
                 print("Waiting for AGL data")
                 continue
 
-            display_frame = self.of.pass_frame(frame, R_c_n, agl)
+            mav_velocity_x = self.mav_data.groundspeed * np.cos(np.radians(self.mav_data.groundcourse))
+            mav_velocity_y = self.mav_data.groundspeed * np.sin(np.radians(self.mav_data.groundcourse))
 
-            dt = time.time() - last_frame_time
-            last_frame_time = time.time()
+            if self.kf is None:
+                self.kf = KalmanFilter(self.mav_data.local_pos_n, self.mav_data.local_pos_e, mav_velocity_x, mav_velocity_y, q_vx, q_vy)
+
+            display_frame = self.of.pass_frame(frame, R_c_n, agl)
 
 
             if frame is None:
                 time.sleep(0.01)
                 continue
+
+            dt = time.time() - last_frame_time
+            last_frame_time = time.time()
 
 
             dxs = []
@@ -354,7 +376,7 @@ class NavigationController:
                     vxs.append(dx/dt)
                     vys.append(dy/dt)
 
-            if len(dxs)>0 and len(dys)>0 and len(dts)>0:
+            if len(dxs)>2 and len(dys)>2 and len(dts)>2:
 
                 mean_dx = np.mean(dxs)
                 mean_dy = np.mean(dys)
@@ -366,11 +388,17 @@ class NavigationController:
                 x_vel = np.mean(vxs)
                 y_vel = np.mean(vys)
 
+                sum = 0
+                for i in range(len(vxs)):
+                    sum += (vxs[i] - x_vel) * (vys[i] - y_vel)
+                cov = sum / (len(vxs)-1)
+
+
                 _, t = self.rigid_transform_3D(As, Bs)
                 if t is not None:
                     t = t / np.mean(dts)
 
-                R = np.diag([var_x**2.0, var_y**2.0])
+                R = np.array([[var_x**2.0, cov],[cov, var_y**2.0]]) * 2
                 z = [x_vel, y_vel]
                 ret = self.kf.update(z, R)
 
@@ -384,8 +412,39 @@ class NavigationController:
                         rr.log("/velocity/x/new", rr.Clear(recursive=True))
                         rr.log("/velocity/y/new", rr.Clear(recursive=True))
 
-                    mav_velocity_x = self.mav_data.groundspeed * np.cos(np.radians(self.mav_data.groundcourse))
-                    mav_velocity_y = self.mav_data.groundspeed * np.sin(np.radians(self.mav_data.groundcourse))
+                    local_pos_x = self.mav_data.local_pos_n
+                    local_pos_y = self.mav_data.local_pos_e
+                    estimated_pos_x = ret[0]
+                    estimated_pos_y = ret[1]
+                    rr.log("/position/x/groundtruth", rr.Scalar(local_pos_x))
+                    rr.log("/position/y/groundtruth", rr.Scalar(local_pos_y))
+                    rr.log("/position/x/estimated", rr.Scalar(estimated_pos_x))
+                    rr.log("/position/y/estimated", rr.Scalar(estimated_pos_y))
+
+
+
+                    covmat = self.kf.P[0:2, 0:2]
+                    eigvals, eigvecs = np.linalg.eig(covmat)
+                    semimajor_idx = np.argmax(eigvals)
+                    semiminor_idx = np.argmin(eigvals)
+                    semimajor_eigenvalue = eigvecs[semimajor_idx]
+                    semiminor_eigenvalue = eigvecs[semiminor_idx]
+                    theta = np.atan2(semimajor_eigenvalue[1], semimajor_eigenvalue[0])
+                    rot = rr.RotationAxisAngle([0, 0, 1], radians=theta)
+
+                    cov = rr.Ellipsoids3D(centers=[[estimated_pos_y, estimated_pos_x, 0]], half_sizes=[eigvals[0], eigvals[1], 0], rotation_axis_angles=rot)
+                    true_loc = rr.Points3D([[local_pos_y, local_pos_x, 0]], radii=1, colors=[255, 155, 155])
+                    estimated_loc = rr.Points3D([[estimated_pos_y, estimated_pos_x, 0]], radii=1, colors=[155, 155, 255])
+
+                    rr.log("/spatial/estimated", estimated_loc)
+                    rr.log("/spatial/true", true_loc)
+                    rr.log("/spatial/covariance_ellipse", cov)
+
+                    rr.log("/position/x/covariance", rr.Scalar(self.kf.P[0,0]))
+                    rr.log("/position/y/covariance", rr.Scalar(self.kf.P[1,1]))
+
+
+
 
                     rr.log("/velocity/x/groundtruth", rr.Scalar(mav_velocity_x))
                     rr.log("/velocity/y/groundtruth", rr.Scalar(mav_velocity_y))
@@ -393,8 +452,8 @@ class NavigationController:
                     rr.log("/velocity/x/visual_nav", rr.Scalar(x_vel))
                     rr.log("/velocity/y/visual_nav", rr.Scalar(y_vel))
 
-                    rr.log("/velocity/x/visual_nav_filtered", rr.Scalar(ret[0]))
-                    rr.log("/velocity/y/visual_nav_filtered", rr.Scalar(ret[1]))
+                    rr.log("/velocity/x/visual_nav_filtered", rr.Scalar(ret[2]))
+                    rr.log("/velocity/y/visual_nav_filtered", rr.Scalar(ret[3]))
 
                     bins = np.arange(-30, 30, 0.5)
                     x_vel_hist, edges = np.histogram(vxs, bins=bins)
