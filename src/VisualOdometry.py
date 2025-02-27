@@ -207,12 +207,63 @@ class NavigationController:
         X = alpha * X
         return X
     
+    def compute_translation_rotation(self, K, R1, R2, alt, x1s, x2s):
+
+        # Compute the point locations in camera frame of reference
+        X1s = []
+
+        for x1 in x1s:
+            X = R.T @ np.linalg.inv(K) @ x
+            alpha = alt / X[0,2]
+            X = alpha * X
+            X1s.append(X)
+
+        mean_point = np.mean(X1s, axis=0)
+
+
+    def rigid_transform_3D(self, p, q):
+        if len(p) < 2:
+            return None, None
+
+        p = np.array(p)
+        q = np.array(q)
+
+        N = p.shape[0]; # total points
+
+        centroid_p = np.mean(p, axis=0)
+        centroid_q = np.mean(q, axis=0)
+
+        p = p.reshape((N,3)).T
+        q = q.reshape((N,3)).T
+
+        # centre the points
+        X = p - np.tile(centroid_p, N)
+        Y = q - np.tile(centroid_q, N)
+
+        H = X @ Y.T
+
+        U, S, Vt = np.linalg.svd(H)
+
+        det = np.linalg.det(Vt.T @ U.T)
+
+        d = [1]*(Vt.shape[0]-1)
+        d.append(round(det))
+
+        D = np.diag(d)
+
+        R = Vt.T @ D @ U.T
+
+        t = centroid_q - R @ centroid_p
+
+        return R, t
+
+    
     def run(self):
         last_frame_time = 0
 
         # Process covariance
-        q_x = 0.01
-        q_y = 0.01
+        q_x = 0.1
+        q_y = 0.1
         self.kf = KalmanFilter(1, 1, q_x, q_y)
 
         while True:
@@ -228,6 +279,7 @@ class NavigationController:
                 print("Waiting for attitude data")
                 continue
             if agl == 0:
+                print(self.mav_data.as_dict())
                 print("Waiting for AGL data")
                 continue
 
@@ -247,16 +299,48 @@ class NavigationController:
             dts = []
             vxs = []
             vys = []
+
+
+            As = []
+            Bs = []
+
+            num_frames = 5
+            current_frame_idx = self.of.get_current_frame_index()
             for t in self.of.tracks:
-                if len(t) > 1:
-                    u0, v0, R0, agl0, t0 = t[0]
-                    u1, v1, R1, agl1, t1 = t[-1]
+                """
+                u0, v0, R0, agl0, t0, idx0 = [None]*6
+                u1, v1, R1, agl1, t1, idx1 = [None]*6
+  
+                have_track_0 = False
+                have_track_1 = False
+                for u, v, R, agl, _t, idx in t:
+                    if idx == current_frame_idx - num_frames:
+                        u0, v0, R0, agl0, t0, idx0 = u, v, R, agl, _t, idx
+                        have_track_0 = True
+
+                    if idx == current_frame_idx:
+                        u1, v1, R1, agl1, t1, idx1 = u, v, R, agl, _t, idx
+                        have_track_1 = True
+
+
+                if have_track_0 and have_track_1:
+                """
+
+                u0, v0, R0, agl0, t0, idx0 = t[0]
+                u1, v1, R1, agl1, t1, idx1 = t[-1]
+
+                if len(t) > num_frames:
 
                     x0 = np.array([u0, v0, 1])
                     x1 = np.array([u1, v1, 1])
 
                     X0 = self.compute_world_location(intrinsic_matrix, R0, agl0, x0)
                     X1 = self.compute_world_location(intrinsic_matrix, R1, agl1, x1)
+
+                    A = X0
+                    B = self.compute_world_location(intrinsic_matrix, R0, agl0, x1)
+                    As.append(np.array(A).T)
+                    Bs.append(np.array(B).T)
 
                     # Negative because we computed the world motion, not the aircraft motion
                     dx = -(X1[0,0] - X0[0,0])
@@ -271,11 +355,10 @@ class NavigationController:
                     vys.append(dy/dt)
 
             if len(dxs)>0 and len(dys)>0 and len(dts)>0:
+
                 mean_dx = np.mean(dxs)
                 mean_dy = np.mean(dys)
                 mean_dt = np.mean(dts)
-
-
 
                 var_x = np.std(vxs)
                 var_y = np.std(vys)
@@ -283,15 +366,24 @@ class NavigationController:
                 x_vel = np.mean(vxs)
                 y_vel = np.mean(vys)
 
+                _, t = self.rigid_transform_3D(As, Bs)
+                if t is not None:
+                    t = t / np.mean(dts)
+
                 R = np.diag([var_x**2.0, var_y**2.0])
                 z = [x_vel, y_vel]
                 ret = self.kf.update(z, R)
 
-                print("AGL: ", self.mav_data.agl)
-
-
 
                 if RERUN_ENABLED:
+
+                    if t is not None:
+                        rr.log("/velocity/x/new", rr.Scalar(-t[0]))
+                        rr.log("/velocity/y/new", rr.Scalar(-t[1]))
+                    else:
+                        rr.log("/velocity/x/new", rr.Clear(recursive=True))
+                        rr.log("/velocity/y/new", rr.Clear(recursive=True))
+
                     mav_velocity_x = self.mav_data.groundspeed * np.cos(np.radians(self.mav_data.groundcourse))
                     mav_velocity_y = self.mav_data.groundspeed * np.sin(np.radians(self.mav_data.groundcourse))
 

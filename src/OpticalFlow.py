@@ -34,8 +34,12 @@ class OpticalFlow:
                               maxLevel=2,
                               criteria=(cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, 10, 0.03))
 
+    def get_current_frame_index(self):
+        return self.frame_idx
+
     def pass_frame(self, frame, R, agl):
 
+        self.frame_idx += 1
         display_frame = frame.copy()
         frame_grayscale = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
         now = time.time()
@@ -52,7 +56,7 @@ class OpticalFlow:
             for tr, (x, y), good_flag in zip(self.tracks, p1.reshape(-1, 2), good):
                 if not good_flag:
                     continue
-                tr.append((x, y, R, agl, now))
+                tr.append((x, y, R, agl, now, self.frame_idx))
                 if len(tr) > self.maximum_track_len:
                     del tr[0]
                 new_tracks.append(tr)
@@ -77,7 +81,7 @@ class OpticalFlow:
 
             if p is not None:
                 for x, y in np.float32(p).reshape(-1, 2):
-                    self.tracks.append([(x, y, R, agl, now)])
+                    self.tracks.append([(x, y, R, agl, now, self.frame_idx)])
 
         self.previous_frame = frame_grayscale
 
