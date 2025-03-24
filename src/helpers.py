@@ -13,6 +13,27 @@ EARTH_POLAR_RADIUS =      6356752
 EARTH_EQUATORIAL_RADIUS = 6378137
 
 
+def draw_text_with_background(img, text,
+          font=cv2.FONT_HERSHEY_PLAIN,
+          pos=(0, 0),
+          font_scale=3,
+          font_thickness=2,
+          text_color=(0, 255, 0),
+          bg_color=(0, 0, 0),
+          bg_padding_x = 2,
+          bg_padding_y = 2,
+          ):
+
+    x, y = pos
+    bg_pos = x-bg_padding_x, y - bg_padding_y
+
+    text_size, _ = cv2.getTextSize(text, font, font_scale, font_thickness)
+    text_w, text_h = text_size
+    cv2.rectangle(img, bg_pos, (x + text_w + bg_padding_x * 2, y + text_h + bg_padding_y*2), bg_color, -1)
+    cv2.putText(img, text, (x, y + text_h + font_scale - 1), font, font_scale, text_color, font_thickness)
+
+    return text_size
+
 def expand_bounding_box(detection, pixels):
     detection.bb_x = detection.bb_x - pixels
     detection.bb_y = detection.bb_y - pixels

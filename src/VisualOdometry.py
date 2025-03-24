@@ -52,6 +52,7 @@ parser.add_argument('-e', '--server', action='store_true', help="Enables server 
 parser.add_argument('--sitl', action='store_true', help="Use SITL instead of Serial interface")
 parser.add_argument('-r', '--record-video', action='store_true', help="Record video")
 parser.add_argument('--rerun', action='store_true', help="Enable rerun")
+parser.add_argument('--stream', action='store_true', help="Enable RTSP video stream")
 
 
 VERSION = "1.0.0"
@@ -75,6 +76,7 @@ GRAPH = args.graph
 DISPLAY = args.display
 RECORD = args.record_video
 RERUN_ENABLED = args.rerun
+VIDEO_STREAM = args.stream
 
 if RERUN_ENABLED:
     import rerun as rr
@@ -120,6 +122,8 @@ R_c_a = buildRotationMatrix(CAMERA_ROLL, CAMERA_PITCH, CAMERA_YAW, degrees=True)
 if update:
     with open(VISUAL_NAV_CONFIG, 'w') as f:
         json.dump(dat, f, indent=4)
+
+
 
 
 class KalmanFilter:
@@ -175,6 +179,9 @@ class KalmanFilter:
         return self.x
 
 
+    def get_state(self):
+        return self.x
+
 
 
 class NavigationController:
@@ -197,6 +204,10 @@ class NavigationController:
             server_thread = Thread(target=run_flight_server, args=[self.fc])
             server_thread.daemon = True
             server_thread.start()
+        
+        
+        self.PIPELINE_OUT = None
+        self.video_out = None
 
         self.camera_instance = self.fc.getCameraInstance(CAMERA_ID)
         self.mav_data = self.camera_instance.mavlink_data
@@ -469,9 +480,38 @@ class NavigationController:
 
 
 
+            try:
+                state = self.kf.get_state()
+                velocity_x = state[2]
+                velocity_y = state[3]
+                velocity_abs = np.sqrt(velocity_x**2.0 + velocity_y**2.0)
+                direction = np.degrees(np.atan2(velocity_y, velocity_x))
+                direction = direction % 360
 
-            cv2.imshow("frame", display_frame)
-            cv2.waitKey(1)
+                txt_vel = f"Velocity Estimate: {velocity_abs:.2f}"
+                txt_hdg = f"Heading Estimate: {direction:.0f}"
+
+                display_drame = draw_text_with_background(display_frame, txt_vel, cv2.FONT_HERSHEY_SIMPLEX, (20, 30), 1, 2, (255, 255, 255), (0,0,0), 2, 2)
+                display_drame = draw_text_with_background(display_frame, txt_hdg, cv2.FONT_HERSHEY_SIMPLEX, (20, 70), 1, 2, (255, 255, 255), (0,0,0), 2, 2)
+
+
+                if DISPLAY:
+                    cv2.imshow("frame", display_frame)
+                    cv2.waitKey(1)
+                
+                if VIDEO_STREAM:
+                    if self.video_out is None:
+                        print("GSTREAMER NOT SUPPORTED")
+                        #self.PIPELINE_OUT = "appsrc ! ... ! udpsink host=0.0.0.0 port=8888"
+                        #self.PIPELINE_OUT = 'appsrc ! video/x-raw, format=BGR ! queue ! videoconvert ! video/x-raw, format=BGRx ! videoconvert ! x264enc speed-preset=veryfast tune=zerolatency bitrate=800 insert-vui=1 ! h264parse ! rtph264pay name=pay0 pt=96 config-interval=1 ! udpsink port=8888 host=127.0.0.1'
+                        #self.video_out = cv2.VideoWriter(self.PIPELINE_OUT, cv2.CAP_GSTREAMER, 0, 30, frame.shape[:2])
+                    
+                    #self.video_out.write(frame)
+                    #print("Streaming")
+
+            except Exception as e:
+                print("Error occurred: ")
+                print(e)
 
 
 
