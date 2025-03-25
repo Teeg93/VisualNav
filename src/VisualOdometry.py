@@ -33,7 +33,7 @@ def loadCameraCalibration(filepath):
         return None, None
 
 
-parser = argparse.ArgumentParser(description="Basic celestial positioning module")
+parser = argparse.ArgumentParser(description="Basic visual odometry script")
 
 parser.add_argument('-c', '--calibration-directory', type=str, required=True,
                     help="Path to calibration directory containing both the camera calibration and the visual nav configuration")
@@ -53,6 +53,9 @@ parser.add_argument('--sitl', action='store_true', help="Use SITL instead of Ser
 parser.add_argument('-r', '--record-video', action='store_true', help="Record video")
 parser.add_argument('--rerun', action='store_true', help="Enable rerun")
 parser.add_argument('--stream', action='store_true', help="Enable RTSP video stream")
+parser.add_argument('--stream-port', type=int, default=8888, help="Port number to stream video with")
+parser.add_argument('--stream-quality', type=int, default=10, help="Compression quality of video stream")
+parser.add_argument('--stream-rate', type=float, default=10, help="Video stream rate (Hz)")
 
 
 VERSION = "1.0.0"
@@ -77,6 +80,9 @@ DISPLAY = args.display
 RECORD = args.record_video
 RERUN_ENABLED = args.rerun
 VIDEO_STREAM = args.stream
+VIDEO_STREAM_PORT = args.stream_port
+VIDEO_STREAM_QUALITY = args.stream_quality
+VIDEO_STREAM_RATE = args.stream_rate
 
 if RERUN_ENABLED:
     import rerun as rr
@@ -206,8 +212,12 @@ class NavigationController:
             server_thread.start()
         
         
-        self.PIPELINE_OUT = None
-        self.video_out = None
+        if VIDEO_STREAM:
+            from VideoStream import VideoStreamServer
+            self.video_stream_server = VideoStreamServer('0.0.0.0', VIDEO_STREAM_PORT, VIDEO_STREAM_QUALITY)
+            self.last_stream_frame_time = time.time()
+            self.stream_interval = 1.0 / float(VIDEO_STREAM_RATE)
+        
 
         self.camera_instance = self.fc.getCameraInstance(CAMERA_ID)
         self.mav_data = self.camera_instance.mavlink_data
@@ -491,8 +501,8 @@ class NavigationController:
                 txt_vel = f"Velocity Estimate: {velocity_abs:.2f}"
                 txt_hdg = f"Heading Estimate: {direction:.0f}"
 
-                display_drame = draw_text_with_background(display_frame, txt_vel, cv2.FONT_HERSHEY_SIMPLEX, (20, 30), 1, 2, (255, 255, 255), (0,0,0), 2, 2)
-                display_drame = draw_text_with_background(display_frame, txt_hdg, cv2.FONT_HERSHEY_SIMPLEX, (20, 70), 1, 2, (255, 255, 255), (0,0,0), 2, 2)
+                display_frame = draw_text_with_background(display_frame, txt_vel, cv2.FONT_HERSHEY_SIMPLEX, (20, 30), 1, 2, (255, 255, 255), (0,0,0), 2, 2)
+                display_frame = draw_text_with_background(display_frame, txt_hdg, cv2.FONT_HERSHEY_SIMPLEX, (20, 70), 1, 2, (255, 255, 255), (0,0,0), 2, 2)
 
 
                 if DISPLAY:
@@ -500,15 +510,10 @@ class NavigationController:
                     cv2.waitKey(1)
                 
                 if VIDEO_STREAM:
-                    if self.video_out is None:
-                        print("GSTREAMER NOT SUPPORTED")
-                        #self.PIPELINE_OUT = "appsrc ! ... ! udpsink host=0.0.0.0 port=8888"
-                        #self.PIPELINE_OUT = 'appsrc ! video/x-raw, format=BGR ! queue ! videoconvert ! video/x-raw, format=BGRx ! videoconvert ! x264enc speed-preset=veryfast tune=zerolatency bitrate=800 insert-vui=1 ! h264parse ! rtph264pay name=pay0 pt=96 config-interval=1 ! udpsink port=8888 host=127.0.0.1'
-                        #self.video_out = cv2.VideoWriter(self.PIPELINE_OUT, cv2.CAP_GSTREAMER, 0, 30, frame.shape[:2])
-                    
-                    #self.video_out.write(frame)
-                    #print("Streaming")
-
+                    if time.time() - self.last_stream_frame_time > self.stream_interval:
+                        self.video_stream_server.send_frame(display_frame)
+                        self.last_stream_frame_time = time.time()
+                
             except Exception as e:
                 print("Error occurred: ")
                 print(e)

@@ -29,10 +29,9 @@ def draw_text_with_background(img, text,
 
     text_size, _ = cv2.getTextSize(text, font, font_scale, font_thickness)
     text_w, text_h = text_size
-    cv2.rectangle(img, bg_pos, (x + text_w + bg_padding_x * 2, y + text_h + bg_padding_y*2), bg_color, -1)
-    cv2.putText(img, text, (x, y + text_h + font_scale - 1), font, font_scale, text_color, font_thickness)
-
-    return text_size
+    img = cv2.rectangle(img, bg_pos, (x + text_w + bg_padding_x * 2, y + text_h + bg_padding_y*2), bg_color, -1)
+    img = cv2.putText(img, text, (x, y + text_h + font_scale - 1), font, font_scale, text_color, font_thickness)
+    return img
 
 def expand_bounding_box(detection, pixels):
     detection.bb_x = detection.bb_x - pixels
