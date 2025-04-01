@@ -195,14 +195,15 @@ class NavigationController:
 
     def __init__(self):
 
+        camera_list = []
         if SECONDARY_CAMERA_ID is not None:
-            rgb_camera_list = [CAMERA_ID, SECONDARY_CAMERA_ID]
+            camera_list = [CAMERA_ID, SECONDARY_CAMERA_ID]
         else:
-            rgb_camera_list = [CAMERA_ID]
+            camera_list = [CAMERA_ID]
 
-        log(f"Camera list: {rgb_camera_list}")
-        print(f"Camera list: {rgb_camera_list}")
-        self.fc = FlightCapture(record=RECORD, log_flight_data=True, rgb_camera_list=rgb_camera_list)
+        log(f"Camera list: {camera_list}")
+        print(f"Camera list: {camera_list}")
+        self.fc = FlightCapture(record=RECORD, log_flight_data=True, rgb_camera_list=camera_list)
         self.mv = MavlinkHandler(self.fc, port=args.serial_port, baud=args.baudrate, log_flight_data=True,
                                  log_fast_attitude=True)
 
@@ -453,7 +454,7 @@ class NavigationController:
                     semiminor_idx = np.argmin(eigvals)
                     semimajor_eigenvalue = eigvecs[semimajor_idx]
                     semiminor_eigenvalue = eigvecs[semiminor_idx]
-                    theta = np.atan2(semimajor_eigenvalue[1], semimajor_eigenvalue[0])
+                    theta = np.arctan2(semimajor_eigenvalue[1], semimajor_eigenvalue[0])
                     rot = rr.RotationAxisAngle([0, 0, 1], radians=theta)
 
                     cov = rr.Ellipsoids3D(centers=[[estimated_pos_y, estimated_pos_x, 0]], half_sizes=[eigvals[0], eigvals[1], 0], rotation_axis_angles=rot)
@@ -495,7 +496,7 @@ class NavigationController:
                 velocity_x = state[2]
                 velocity_y = state[3]
                 velocity_abs = np.sqrt(velocity_x**2.0 + velocity_y**2.0)
-                direction = np.degrees(np.atan2(velocity_y, velocity_x))
+                direction = np.degrees(np.arctan2(velocity_y, velocity_x))
                 direction = direction % 360
 
                 txt_vel = f"Velocity Estimate: {velocity_abs:.2f}"
