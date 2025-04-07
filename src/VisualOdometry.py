@@ -14,6 +14,8 @@ from FlightUtils.Server.FlightServer import run as run_flight_server
 from OpticalFlow import OpticalFlow
 from helpers import *
 
+from ThermalTools import compute_thermal_bracket, raw_to_thermal_frame
+
 def loadCameraCalibration(filepath):
     try:
         with open(filepath, 'r') as f:
@@ -207,6 +209,9 @@ class NavigationController:
         self.mv = MavlinkHandler(self.fc, port=args.serial_port, baud=args.baudrate, log_flight_data=True,
                                  log_fast_attitude=True)
 
+        self.mv.set_mav_cmd_user_1_callback(self.mav_cmd_user_1_callback)
+
+
         if args.server:
             server_thread = Thread(target=run_flight_server, args=[self.fc])
             server_thread.daemon = True
@@ -226,6 +231,45 @@ class NavigationController:
         self.of = OpticalFlow(point_mask_radius=100, maximum_track_len=30)
 
         self.T = np.array([0, 0, 0])
+
+
+
+    def mav_cmd_user_1_callback(self, param1, param2, param3, param4, param5, param6, param7):
+        log("NAVIGATION: Received a command from GCS")
+        log(f"{param1}, {param2}, {param3}, {param4}, {param5}, {param6}, {param7}")
+
+        try:
+            camera_id = int(param1)
+            if camera_id == 1:
+                cam = self.fc.getCameraInstance(CAMERA_ID)
+            elif camera_id == 2:
+                cam = self.fc.getCameraInstance(SECONDARY_CAMERA_ID)
+
+            if cam is None:
+                print(f"Selected camera {camera_id} is not available")
+                self.mv.conn.mav.command_ack_send(31010, 1)
+                self.mv.conn.mav.statustext_send(4, "Selected camera is not available".encode())
+                return
+
+            print(f"Camera instance updated to {camera_id}")
+            self.camera_instance = cam
+            self.mv.conn.mav.command_ack_send(31010, 0)
+
+            if camera_id == 1:
+                self.of = OpticalFlow(point_mask_radius=100, maximum_track_len=30)
+            else:
+                self.of = OpticalFlow(point_mask_radius=10, maximum_track_len=30)
+
+
+
+
+        except Exception as e:
+            print(e)
+
+            # 2 == MAV_RESULT_DENIED
+            self.mv.conn.mav.command_ack_send(31010, 2)
+            # 4 == MAV_SEVERITY_WARNING
+            self.mv.conn.mav.statustext_send(4, str(e).encode())
 
 
     def get_camera_rotation_matrix(self):
@@ -310,6 +354,11 @@ class NavigationController:
                 time.sleep(0.01)
                 continue
 
+            if self.camera_instance.device_type == 'thermal':
+                min_temp, max_temp = compute_thermal_bracket(frame)
+                frame = raw_to_thermal_frame(frame, min_temp, max_temp)
+
+
             R_c_n = self.get_camera_rotation_matrix()
             agl = self.mav_data.agl
 
@@ -329,10 +378,6 @@ class NavigationController:
 
             display_frame = self.of.pass_frame(frame, R_c_n, agl)
 
-
-            if frame is None:
-                time.sleep(0.01)
-                continue
 
             dt = time.time() - last_frame_time
             last_frame_time = time.time()
@@ -501,6 +546,15 @@ class NavigationController:
 
                 txt_vel = f"Velocity Estimate: {velocity_abs:.2f}"
                 txt_hdg = f"Heading Estimate: {direction:.0f}"
+
+
+
+
+
+
+                if display_frame.shape[0] < 400:
+                    display_frame = cv2.resize(display_frame, (int(display_frame.shape[1]*3), int(display_frame.shape[0]*3)))
+
 
                 display_frame = draw_text_with_background(display_frame, txt_vel, cv2.FONT_HERSHEY_SIMPLEX, (20, 30), 1, 2, (255, 255, 255), (0,0,0), 2, 2)
                 display_frame = draw_text_with_background(display_frame, txt_hdg, cv2.FONT_HERSHEY_SIMPLEX, (20, 70), 1, 2, (255, 255, 255), (0,0,0), 2, 2)

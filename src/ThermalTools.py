@@ -51,14 +51,19 @@ def compute_thermal_bracket(frame, min_val=27300, max_val=37300, count_threshold
 
     """
     count, bins = np.histogram(frame, bins=1000, range=(min_val, max_val))
+    count_th = np.where(count>count_threshold)
 
-    min_idx = np.min(np.where(count > count_threshold))
-    max_idx = np.max(np.where(count > count_threshold))+1
+    if len(count_th[0]) <= 0:
+        min_temp = raw_pixel_to_deg_c(np.min(frame[np.nonzero(frame)]))
+        max_temp = raw_pixel_to_deg_c(np.max(frame[np.nonzero(frame)]))
+        return min_temp, max_temp
 
-    min_temp = raw_pixel_to_deg_c(bins[min_idx])
-    max_temp = raw_pixel_to_deg_c(bins[max_idx])
-
-    return min_temp, max_temp
+    else:
+        min_idx = np.min(count_th)
+        max_idx = np.max(count_th)+1
+        min_temp = raw_pixel_to_deg_c(bins[min_idx])
+        max_temp = raw_pixel_to_deg_c(bins[max_idx])
+        return min_temp, max_temp
 
 
 class ThermalFlow:

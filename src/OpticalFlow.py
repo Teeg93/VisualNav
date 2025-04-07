@@ -2,7 +2,6 @@ import cv2
 import numpy as np
 import time
 
-
 class Track:
     def __init__(self):
         pass
@@ -38,10 +37,21 @@ class OpticalFlow:
         return self.frame_idx
 
     def pass_frame(self, frame, R, agl):
+        if frame is None:
+            return
+
 
         self.frame_idx += 1
         display_frame = frame.copy()
-        frame_grayscale = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+
+        # Convert to grayscale
+        if len(frame.shape) == 3 and frame.shape[2] >= 3:
+            frame_grayscale = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+
+        # Already single channel
+        else:
+            frame_grayscale = frame
+
         now = time.time()
 
         if len(self.tracks) > 0:
