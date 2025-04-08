@@ -32,6 +32,7 @@ def loadCameraCalibration(filepath):
 
     except Exception as e:
         print(f"Exception thrown: {e}")
+        log(f"Exception thrown: {e}")
         return None, None
 
 
@@ -133,6 +134,10 @@ if update:
 
 
 
+COMMAND_SELECT_CAMERA = 1
+COMMAND_RESET = 2
+COMMAND_SET_VALUE = 3
+
 
 class KalmanFilter:
     def __init__(self, x0, y0, vx0, vy0, q_vx, q_vy):
@@ -228,12 +233,22 @@ class NavigationController:
         self.camera_instance = self.fc.getCameraInstance(CAMERA_ID)
         self.mav_data = self.camera_instance.mavlink_data
 
+        # Minimum number of frames to use when computing optical flow
+        self.num_frames = 5
+
+        # Optical flow object
         self.of = OpticalFlow(point_mask_radius=100, maximum_track_len=30)
 
         self.T = np.array([0, 0, 0])
 
         self.min_temp = 0
         self.max_temp = 50
+
+        self.origin_lat = 0
+        self.origin_lon = 0
+
+        # Flag - set this to tell the system to reset
+        self.reset_flag = False
 
 
 
@@ -242,35 +257,42 @@ class NavigationController:
         log(f"{param1}, {param2}, {param3}, {param4}, {param5}, {param6}, {param7}")
 
         try:
-            camera_id = int(param1)
-            if camera_id == 1:
-                cam = self.fc.getCameraInstance(CAMERA_ID)
-            elif camera_id == 2:
-                cam = self.fc.getCameraInstance(SECONDARY_CAMERA_ID)
+            if int(param1) == COMMAND_SELECT_CAMERA:
+                camera_id = int(param2)
+                if camera_id == 1:
+                    cam = self.fc.getCameraInstance(CAMERA_ID)
+                elif camera_id == 2:
+                    cam = self.fc.getCameraInstance(SECONDARY_CAMERA_ID)
 
-            if cam is None:
-                print(f"Selected camera {camera_id} is not available")
-                self.mv.conn.mav.command_ack_send(31010, 1)
-                self.mv.conn.mav.statustext_send(4, "Selected camera is not available".encode())
-                return
+                if cam is None:
+                    print(f"Selected camera {camera_id} is not available")
+                    log(f"Selected camera {camera_id} is not available")
+                    self.mv.conn.mav.command_ack_send(31010, 1)
+                    self.mv.conn.mav.statustext_send(4, "Selected camera is not available".encode())
+                    return
 
-            print(f"Camera instance updated to {camera_id}")
-            self.camera_instance = cam
-            self.mv.conn.mav.command_ack_send(31010, 0)
+                print(f"Camera instance updated to {camera_id}")
+                log(f"Camera instance updated to {camera_id}")
+                self.camera_instance = cam
+                self.mv.conn.mav.command_ack_send(31010, 0)
 
-            # RGB Camera
-            if camera_id == 1:
-                self.of = OpticalFlow(point_mask_radius=100, maximum_track_len=30)
+                # RGB Camera
+                if camera_id == 1:
+                    self.of = OpticalFlow(point_mask_radius=100, maximum_track_len=30)
 
-            # Thermal Camera
-            else:
-                self.of = OpticalFlow(point_mask_radius=20, maximum_track_len=10)
+                # Thermal Camera
+                else:
+                    self.of = OpticalFlow(point_mask_radius=20, maximum_track_len=10)
 
+            elif int(param1) == COMMAND_RESET:
+                self.reset_flag = True
+                self.mv.conn.mav.command_ack_send(31010, 0)
 
 
 
         except Exception as e:
             print(e)
+            log(e)
 
             # 2 == MAV_RESULT_DENIED
             self.mv.conn.mav.command_ack_send(31010, 2)
@@ -345,6 +367,35 @@ class NavigationController:
 
         return R, t
 
+    def _reset(self):
+        print("RESETTING")
+        log("RESETTING")
+        self.origin_lat = self.mav_data.lat
+        self.origin_lon = self.mav_data.lon
+        self.kf = None
+    
+    def get_global_coords(self):
+        if self.kf is None:
+            return None, None
+        
+        state = self.kf.get_state()
+        if state is None:
+            return None, None
+        
+        origin = (self.origin_lat, self.origin_lon)
+        if None in origin:
+            return None, None
+
+        x = state[0]
+        y = state[1]
+
+        distance = np.sqrt(x**2.0 + y**2.0)
+        direction = np.arctan2(y, x)
+
+        lat, lon = inverse_haversine(origin, distance, direction, unit=Unit.METERS)
+
+        return lat, lon
+
     
     def run(self):
         last_frame_time = 0
@@ -355,6 +406,10 @@ class NavigationController:
         self.kf = None
 
         while True:
+            if self.reset_flag:
+                self._reset()
+                self.reset_flag = False
+
             frame = self.camera_instance.drain_last_frame()
             if frame is None:
                 time.sleep(0.01)
@@ -375,26 +430,44 @@ class NavigationController:
                 frame = raw_to_thermal_frame(frame, self.min_temp, self.max_temp)
 
 
+            # Rotation matrix of the camera in NED coordinates
             R_c_n = self.get_camera_rotation_matrix()
+
+            # Fetch altitude from the autopilot
             agl = self.mav_data.agl
 
+            # Ensure we have attitude data
             if (0 in [self.mav_data.roll, self.mav_data.pitch, self.mav_data.yaw]):
                 print("Waiting for attitude data")
-                continue
-            if agl == 0:
-                print(self.mav_data.as_dict())
-                print("Waiting for AGL data")
+                log("Waiting for attitude data")
+                time.sleep(0.1)
                 continue
 
+            # Ensure we have altitude data
+            if agl == 0:
+                print(self.mav_data.as_dict())
+                log(self.mav_data.as_dict())
+                print("Waiting for AGL data")
+                log("Waiting for AGL data")
+                continue
+        
+            if 0 in (self.origin_lat, self.origin_lon):
+                self.origin_lat = self.mav_data.lat
+                self.origin_lon = self.mav_data.lon
+
+
+            # Calculate the groudtruth velocity
             mav_velocity_x = self.mav_data.groundspeed * np.cos(np.radians(self.mav_data.groundcourse))
             mav_velocity_y = self.mav_data.groundspeed * np.sin(np.radians(self.mav_data.groundcourse))
 
+            # Initialize the Kalman filter (using the current estimate)
             if self.kf is None:
-                self.kf = KalmanFilter(self.mav_data.local_pos_n, self.mav_data.local_pos_e, mav_velocity_x, mav_velocity_y, q_vx, q_vy)
+                self.kf = KalmanFilter(0, 0, mav_velocity_x, mav_velocity_y, q_vx, q_vy)
 
+            # Run the optical flow - this returns a frame with drawing on it for display purposes
             display_frame = self.of.pass_frame(frame, R_c_n, agl)
 
-
+            # Amount of time since last iteration
             dt = time.time() - last_frame_time
             last_frame_time = time.time()
 
@@ -409,36 +482,25 @@ class NavigationController:
             As = []
             Bs = []
 
-            num_frames = 5
             current_frame_idx = self.of.get_current_frame_index()
+
+            # For each track in our optical flow object
             for t in self.of.tracks:
-                """
-                u0, v0, R0, agl0, t0, idx0 = [None]*6
-                u1, v1, R1, agl1, t1, idx1 = [None]*6
-  
-                have_track_0 = False
-                have_track_1 = False
-                for u, v, R, agl, _t, idx in t:
-                    if idx == current_frame_idx - num_frames:
-                        u0, v0, R0, agl0, t0, idx0 = u, v, R, agl, _t, idx
-                        have_track_0 = True
 
-                    if idx == current_frame_idx:
-                        u1, v1, R1, agl1, t1, idx1 = u, v, R, agl, _t, idx
-                        have_track_1 = True
-
-
-                if have_track_0 and have_track_1:
-                """
-
+                # Get the first frame from this track
                 u0, v0, R0, agl0, t0, idx0 = t[0]
+
+                # Get the final frame from this track
                 u1, v1, R1, agl1, t1, idx1 = t[-1]
 
-                if len(t) > num_frames:
+                # Ensure that the total number of frames is greater than the specified minimum
+                if len(t) > self.num_frames:
 
+                    # Image position of first and last track
                     x0 = np.array([u0, v0, 1])
                     x1 = np.array([u1, v1, 1])
 
+                    # Compute the theoretical world coordinates of these points
                     X0 = self.compute_world_location(intrinsic_matrix, R0, agl0, x0)
                     X1 = self.compute_world_location(intrinsic_matrix, R1, agl1, x1)
 
@@ -563,29 +625,32 @@ class NavigationController:
                 txt_vel = f"Velocity Estimate: {velocity_abs:.2f}"
                 txt_hdg = f"Heading Estimate: {direction:.0f}"
 
+                lat, lon = self.get_global_coords()
+                self.mv.conn.mav.global_vision_position_estimate_send(int(time.time()*1000000), lat, lon, 0, 0, 0, direction, [0]*21, current_frame_idx % 255)
+
+                if DISPLAY or VIDEO_STREAM:
+                    if display_frame.shape[0] < 400:
+                        display_frame = cv2.resize(display_frame, (int(display_frame.shape[1]*3), int(display_frame.shape[0]*3)))
 
 
-
-                if display_frame.shape[0] < 400:
-                    display_frame = cv2.resize(display_frame, (int(display_frame.shape[1]*3), int(display_frame.shape[0]*3)))
-
-
-                display_frame = draw_text_with_background(display_frame, txt_vel, cv2.FONT_HERSHEY_SIMPLEX, (20, 30), 1, 2, (255, 255, 255), (0,0,0), 2, 2)
-                display_frame = draw_text_with_background(display_frame, txt_hdg, cv2.FONT_HERSHEY_SIMPLEX, (20, 70), 1, 2, (255, 255, 255), (0,0,0), 2, 2)
+                    display_frame = draw_text_with_background(display_frame, txt_vel, cv2.FONT_HERSHEY_SIMPLEX, (20, 30), 1, 2, (255, 255, 255), (0,0,0), 2, 2)
+                    display_frame = draw_text_with_background(display_frame, txt_hdg, cv2.FONT_HERSHEY_SIMPLEX, (20, 70), 1, 2, (255, 255, 255), (0,0,0), 2, 2)
 
 
-                if DISPLAY:
-                    cv2.imshow("frame", display_frame)
-                    cv2.waitKey(1)
-                
-                if VIDEO_STREAM:
-                    if time.time() - self.last_stream_frame_time > self.stream_interval:
-                        self.video_stream_server.send_frame(display_frame)
-                        self.last_stream_frame_time = time.time()
-                
+                    if DISPLAY:
+                        cv2.imshow("frame", display_frame)
+                        cv2.waitKey(1)
+                    
+                    if VIDEO_STREAM:
+                        if time.time() - self.last_stream_frame_time > self.stream_interval:
+                            self.video_stream_server.send_frame(display_frame)
+                            self.last_stream_frame_time = time.time()
+                    
             except Exception as e:
                 print("Error occurred: ")
+                log("Error occurred: ")
                 print(e)
+                log(e)
 
 
 
