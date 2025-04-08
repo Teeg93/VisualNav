@@ -232,6 +232,9 @@ class NavigationController:
 
         self.T = np.array([0, 0, 0])
 
+        self.min_temp = 0
+        self.max_temp = 50
+
 
 
     def mav_cmd_user_1_callback(self, param1, param2, param3, param4, param5, param6, param7):
@@ -255,10 +258,13 @@ class NavigationController:
             self.camera_instance = cam
             self.mv.conn.mav.command_ack_send(31010, 0)
 
+            # RGB Camera
             if camera_id == 1:
                 self.of = OpticalFlow(point_mask_radius=100, maximum_track_len=30)
+
+            # Thermal Camera
             else:
-                self.of = OpticalFlow(point_mask_radius=10, maximum_track_len=30)
+                self.of = OpticalFlow(point_mask_radius=20, maximum_track_len=10)
 
 
 
@@ -356,7 +362,17 @@ class NavigationController:
 
             if self.camera_instance.device_type == 'thermal':
                 min_temp, max_temp = compute_thermal_bracket(frame)
-                frame = raw_to_thermal_frame(frame, min_temp, max_temp)
+                if min_temp > self.min_temp:
+                    self.min_temp += 0.5
+                if min_temp < self.min_temp:
+                    self.min_temp -= 0.5
+
+                if max_temp > self.max_temp:
+                    self.max_temp += 0.5
+                if max_temp < self.max_temp:
+                    self.max_temp -= 0.5
+
+                frame = raw_to_thermal_frame(frame, self.min_temp, self.max_temp)
 
 
             R_c_n = self.get_camera_rotation_matrix()
@@ -546,8 +562,6 @@ class NavigationController:
 
                 txt_vel = f"Velocity Estimate: {velocity_abs:.2f}"
                 txt_hdg = f"Heading Estimate: {direction:.0f}"
-
-
 
 
 
