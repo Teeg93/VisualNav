@@ -297,7 +297,7 @@ class NavigationController:
 
                 print(f"Camera instance updated to {camera_id}")
                 log(f"Camera instance updated to {camera_id}")
-                self.loadCameraCalibration(cam)
+                INTRINSIC_MATRIX, DISTORTION_COEFFICIENTS = loadCameraCalibration(self.camera_instance)
                 self.camera_instance = cam
                 self.mv.conn.mav.command_ack_send(31010, 0)
 
