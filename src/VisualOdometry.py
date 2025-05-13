@@ -16,23 +16,49 @@ from helpers import *
 
 from ThermalTools import compute_thermal_bracket, raw_to_thermal_frame
 
-def loadCameraCalibration(filepath):
+CAMERA_ROLL = None
+CAMERA_PITCH = None
+CAMERA_YAW = None
+R_c_a = None
+
+def loadCameraCalibration(camera):
+    global R_c_a
+    global CAMERA_ROLL
+    global CAMERA_PITCH
+    global CAMERA_YAW
+
     try:
-        with open(filepath, 'r') as f:
-            dat = json.load(f)
+        config = camera.getDeviceConfig()
+
+        # TODO: Fix this shit
+        # Set the global variables
+        CAMERA_ROLL = float(config['camera_roll'])
+        CAMERA_PITCH = float(config['camera_pitch'])
+        CAMERA_YAW = float(config['camera_yaw'])
 
         # Camera intrinsics
-        cam_mtx = dat['camera_matrix']
+        cam_mtx = config['camera_matrix']
         cam_mtx = np.array(cam_mtx)
 
         # Distortion coefficients
-        dst = np.array(dat['distortion_coefficients'])
+        dst = np.array(config['distortion_coefficients'])
+
+        # Aircraft to camera rotation matrix
+        R_c_a = buildRotationMatrix(CAMERA_ROLL, CAMERA_PITCH, CAMERA_YAW, degrees=True)
+
+        log(f"Camera Calibration loaded")
+        log(f"Roll: {CAMERA_ROLL}")
+        log(f"Pitch: {CAMERA_PITCH}")
+        log(f"Yaw: {CAMERA_YAW}")
+        log(f"Intrinsics: {cam_mtx}")
+        log(f"Distortion: {dst}")
+        log(f"Rotation matrix: {R_c_a}")
 
         return cam_mtx, dst
 
     except Exception as e:
-        print(f"Exception thrown: {e}")
-        log(f"Exception thrown: {e}")
+        print(f"Exception thrown loading camera calibration: {e}")
+        log(f"Exception thrown loading camera calibration: {e}")
         return None, None
 
 
@@ -97,8 +123,8 @@ CAMERA_CALIBRATION = os.path.join(args.calibration_directory, "camera_calibratio
 if not os.path.exists(CAMERA_CALIBRATION):
     logging.error(f"NAVIGATION: Camera calibration path does not exist: {CAMERA_CALIBRATION}")
 
-intrinsic_matrix, distortion_coefficients = loadCameraCalibration(CAMERA_CALIBRATION)
-CAMERA_INTRINSICS_FLATTENED = list(intrinsic_matrix.flatten())
+INTRINSIC_MATRIX = None
+DISTORTION_COEFFICIENTS = None
 
 VISUAL_NAV_CONFIG = os.path.join(args.calibration_directory, "config.json")
 if not os.path.exists(args.calibration_directory):
@@ -120,12 +146,7 @@ with open(VISUAL_NAV_CONFIG, 'r') as f:
 
     IMAGE_WIDTH = int(dat['image_width_pixels'])
     IMAGE_HEIGHT = int(dat['image_height_pixels'])
-    CAMERA_ROLL = float(dat['camera_roll'])
-    CAMERA_PITCH = float(dat['camera_pitch'])
-    CAMERA_YAW = float(dat['camera_yaw'])
 
-# Aircraft to camera rotation matrix
-R_c_a = buildRotationMatrix(CAMERA_ROLL, CAMERA_PITCH, CAMERA_YAW, degrees=True)
 
 
 if update:
@@ -201,6 +222,8 @@ class NavigationController:
     csv_header = "frame%video_frame_index%state%timestamp%camera_roll%camera_pitch%camera_yaw\n"
 
     def __init__(self):
+        global INTRINSIC_MATRIX
+        global DISTORTION_COEFFICIENTS
 
         camera_list = []
         if SECONDARY_CAMERA_ID is not None:
@@ -232,6 +255,7 @@ class NavigationController:
 
         self.camera_instance = self.fc.getCameraInstance(CAMERA_ID)
         self.mav_data = self.camera_instance.mavlink_data
+        INTRINSIC_MATRIX, DISTORTION_COEFFICIENTS = loadCameraCalibration(self.camera_instance)
 
         # Minimum number of frames to use when computing optical flow
         self.num_frames = 5
@@ -273,6 +297,7 @@ class NavigationController:
 
                 print(f"Camera instance updated to {camera_id}")
                 log(f"Camera instance updated to {camera_id}")
+                self.loadCameraCalibration(cam)
                 self.camera_instance = cam
                 self.mv.conn.mav.command_ack_send(31010, 0)
 
@@ -301,6 +326,7 @@ class NavigationController:
 
 
     def get_camera_rotation_matrix(self):
+        global R_c_a
 
         # Rotation matrix - NED - aircraft frame
         R_a_n = buildRotationMatrix(self.mav_data.roll, self.mav_data.pitch, self.mav_data.yaw, degrees=False)
@@ -397,7 +423,19 @@ class NavigationController:
         return lat, lon
 
     
+
+    def rectifyImage(self, frame, intrinsic_matrix, distortion_coefficients):
+        """
+        Rectify an image. Returns the rectified frame, and the new camera intrinsic matrix
+        """
+        size = (frame.shape[1], frame.shape[0])
+        new_intrinsics, roi = cv2.getOptimalNewCameraMatrix(intrinsic_matrix, distortion_coefficients, size, 0, size)
+        frame = cv2.undistort(frame, intrinsic_matrix, distortion_coefficients, None, new_intrinsics)
+        return frame, new_intrinsics
+
     def run(self):
+        global INTRINSIC_MATRIX
+        global DISTORTION_COEFFICIENTS
         last_frame_time = 0
 
         # Process covariance
@@ -414,6 +452,8 @@ class NavigationController:
             if frame is None:
                 time.sleep(0.01)
                 continue
+
+            frame, intrinsics = self.rectifyImage(frame, INTRINSIC_MATRIX, DISTORTION_COEFFICIENTS)
 
             if self.camera_instance.device_type == 'thermal':
                 min_temp, max_temp = compute_thermal_bracket(frame)
@@ -501,11 +541,11 @@ class NavigationController:
                     x1 = np.array([u1, v1, 1])
 
                     # Compute the theoretical world coordinates of these points
-                    X0 = self.compute_world_location(intrinsic_matrix, R0, agl0, x0)
-                    X1 = self.compute_world_location(intrinsic_matrix, R1, agl1, x1)
+                    X0 = self.compute_world_location(intrinsics, R0, agl0, x0)
+                    X1 = self.compute_world_location(intrinsics, R1, agl1, x1)
 
                     A = X0
-                    B = self.compute_world_location(intrinsic_matrix, R0, agl0, x1)
+                    B = self.compute_world_location(intrinsics, R0, agl0, x1)
                     As.append(np.array(A).T)
                     Bs.append(np.array(B).T)
 
