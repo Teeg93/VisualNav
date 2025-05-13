@@ -22,7 +22,9 @@ class VisualNav(mp_module.MPModule):
         self.packets_mytarget = 0
         self.packets_othertarget = 0
 
-        self.add_command('visual_nav', self.cmd_visual_nav, "visual navigation module", ['cam', 'reset'])
+        self.component = 63
+
+        self.add_command('visual_nav', self.cmd_visual_nav, "visual navigation module", ['cam', 'reset', 'component'])
         self.time_boot_ms = 0
 
         self.last_map_update_time = 0
@@ -69,13 +71,16 @@ class VisualNav(mp_module.MPModule):
                 return
 
             if args[1].lower() == "rgb":
-                self.master.mav.command_long_send(self.target_system, 191, 31010, 0, 1, 1, 0, 0, 0, 0, 0)
+                self.master.mav.command_long_send(self.target_system, self.component, 31010, 0, 1, 1, 0, 0, 0, 0, 0)
 
             if args[1].lower() == "thermal":
-                self.master.mav.command_long_send(self.target_system, 191, 31010, 0, 1, 2, 0, 0, 0, 0, 0)
+                self.master.mav.command_long_send(self.target_system, self.component, 31010, 0, 1, 2, 0, 0, 0, 0, 0)
+
+            if args[1].lower() == "component":
+                self.component = int(args[2])
         
         if args[0].lower() == "reset":
-            self.master.mav.command_long_send(self.target_system, 191, 31010, 0, 2, 0, 0, 0, 0, 0, 0)
+            self.master.mav.command_long_send(self.target_system, self.component, 31010, 0, 2, 0, 0, 0, 0, 0, 0)
 
 
 
@@ -88,7 +93,7 @@ class VisualNav(mp_module.MPModule):
                     self.module('map').update_vehicle_icon_to_loc(self.map_vehicle_name, self.map_vehicle_type, self.map_vehicle_colour, display=True, latlon=(self.estimated_lat, self.estimated_lon), yaw=self.estimated_yaw)
                 except:
                     self.module('map').create_vehicle_icon(self.map_vehicle_name, self.map_vehicle_colour)
-                    self.module('map').map.set_position(self.map_vehicle_name, (self.estimated_lat, self.estimated_lon), rotation=self.estimated_yaw, label=self.map.vehicle_name)
+                    self.module('map').map.set_position(self.map_vehicle_name, (self.estimated_lat, self.estimated_lon), rotation=self.estimated_yaw, label=self.map_vehicle_name)
 
     def mavlink_packet(self, m):
         '''handle mavlink packets'''
