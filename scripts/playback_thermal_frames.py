@@ -27,14 +27,16 @@ play_video = False
 
 sys.path.append('../src')
 from MetadataHandler import MetadataHandlerCSV
-from ThermalTools import raw_to_thermal_frame, ThermalFlow, compute_thermal_bracket
+from ThermalTools import raw_to_thermal_frame, ThermalFlow, compute_thermal_bracket, compute_thermal_bracket_8_bit, scale_frame
+from OpticalFlow import OpticalFlow
 
 
 # Parse command line arguments
 parser = argparse.ArgumentParser(description="Playback from an image  directory")
 
 parser.add_argument('-d', '--directory', type=str, required=True, help="Directory which contains the video file")
-
+parser.add_argument('-tmin', type=float, required=True, help="Minimum temperature (8 bit)")
+parser.add_argument('-tmax', type=float, required=True, help="Maximum temperature (8 bit)")
 
 args = parser.parse_args()
 
@@ -240,7 +242,7 @@ def video_loop():
 
     eof_flag = False
 
-    tf = ThermalFlow()
+    tf = OpticalFlow(point_mask_radius=20, maximum_track_len=10)
 
     while True:
 
@@ -282,17 +284,27 @@ def video_loop():
 
 
         if automatic_bracketing.get():
-            mn, mx = compute_thermal_bracket(frame_16bit)
-            min_temp.set(mn)
-            max_temp.set(mx)
+            if args.tmax and args.tmin:
+                mn, mx = compute_thermal_bracket_8_bit(frame_16bit, args.tmin, args.tmax)
+                min_temp.set(mn)
+                max_temp.set(mx)
+            else:
+                mn, mx = compute_thermal_bracket(frame_16bit)
+                min_temp.set(mn)
+                max_temp.set(mx)
 
         _min_temp = min_temp.get()
         _max_temp = max_temp.get()
 
-        if optical_flow.get():
-            frame_8bit = tf.pass_frame(frame_16bit)
+
+        if args.tmin and args.tmax:
+            frame_8bit = scale_frame(frame_16bit, args.tmin, args.tmax, _min_temp, _max_temp)
         else:
             frame_8bit = raw_to_thermal_frame(frame_16bit, _min_temp, _max_temp)
+
+        if optical_flow.get():
+            frame_8bit = tf.pass_frame(frame_8bit, None, None)
+
 
         _scale = image_scale.get()
         frame_8bit = cv2.resize(frame_8bit, None, fx=_scale, fy=_scale)
@@ -336,7 +348,7 @@ def video_loop():
 
         
         elif ret == 32: #Spacebar
-            play_video =  ~play_video
+            play_video =  not play_video
 
         if not eof_flag and play_video:
             frame_index.set(frame_index.get() + 1)

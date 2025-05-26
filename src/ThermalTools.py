@@ -33,6 +33,43 @@ def raw_to_thermal_frame(raw_frame, min, max):
     return temp
 
 
+def pixel_to_temp(min_temp, max_temp, pixel_val):
+    dt = max_temp - min_temp
+    return min_temp + dt * pixel_val / 255
+
+def pixel_from_temp(min_temp, max_temp, temp_val):
+    dt = max_temp - min_temp
+    pixel_val = (temp_val - min_temp) * 255 / dt
+    return pixel_val
+
+
+def scale_frame(frame, temp_min, temp_max, new_min, new_max):
+    if new_min >= new_max:
+        print("Warning: Minimum temperature greater than or equal to max temperature. Setting min less than max")
+        new_min = new_max - 1
+
+    # Get temperature range limits
+    new_dt = new_max - new_min
+    old_dt = temp_max - temp_min
+
+    frame = frame.astype(np.float32)
+
+    min_pix = pixel_from_temp(temp_min, temp_max, new_min)
+    max_pix = pixel_from_temp(temp_min, temp_max, new_max)
+    range = new_max - new_min
+    scalar = 255 / range
+
+    new_frame = frame - min_pix
+    new_frame = new_frame * scalar
+    new_frame[new_frame < 0] = 0
+    new_frame[new_frame > 255] = 255
+
+    new_frame = new_frame.astype(np.uint8)
+
+    return new_frame
+
+
+
 def raw_pixel_to_deg_c(val):
     deg_k = val / 100
     deg_c = deg_k - 273.15
@@ -42,7 +79,7 @@ def raw_pixel_to_deg_k(val):
     deg_k = val / 100
     return deg_k
 
-def compute_thermal_bracket(frame, min_val=27300, max_val=37300, count_threshold=20):
+def compute_thermal_bracket(frame, min_val=27300, max_val=37300, count_threshold=10):
     """
     Find an appropriate themal bracket by looking at the image histogram
 
@@ -63,6 +100,24 @@ def compute_thermal_bracket(frame, min_val=27300, max_val=37300, count_threshold
         max_idx = np.max(count_th)+1
         min_temp = raw_pixel_to_deg_c(bins[min_idx])
         max_temp = raw_pixel_to_deg_c(bins[max_idx])
+        return min_temp, max_temp
+
+def compute_thermal_bracket_8_bit(frame, min_temp, max_temp, min_val=0, max_val=254, count_threshold=20):
+    count, bins = np.histogram(frame, bins=254, range=(min_val, max_val))
+    count_th = np.where(count>count_threshold)
+
+    dt = max_temp - min_temp
+
+    if len(count_th[0]) <= 0:
+        min_temp = min_temp + dt * np.min(frame[np.nonzero(frame)])/255
+        max_temp = min_temp + dt * np.max(frame[np.nonzero(frame)])/255
+        return min_temp, max_temp
+
+    else:
+        min_idx = np.min(count_th)
+        max_idx = np.max(count_th)+1
+        min_temp = min_temp + dt * bins[min_idx]/255
+        max_temp = min_temp + dt * bins[max_idx]/255
         return min_temp, max_temp
 
 
